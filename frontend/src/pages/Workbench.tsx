@@ -200,6 +200,7 @@ export function WorkbenchPage({ backendError = null }: Props): JSX.Element {
         running={running}
         disabled={Boolean(backendError)}
         onDocumentsUploaded={() => void queryClient.invalidateQueries({ queryKey: ["documents"] })}
+        onStop={stop}
         onSubmit={handleSubmit}
       />
 

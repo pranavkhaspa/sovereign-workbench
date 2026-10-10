@@ -1,13 +1,6 @@
-import { ApiError } from "./client";
-import type { AgentEvent, AgentEventType, TaskCreate } from "./types";
+import type { AgentEvent, AgentEventType } from "./types";
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
-
-function apiUrl(path: string): string {
-  return `${API_BASE}${path}`;
-}
-
-function isAgentEventType(value: unknown): value is AgentEventType {
+export function isAgentEventType(value: unknown): value is AgentEventType {
   return (
     value === "task_created" ||
     value === "plan" ||
@@ -21,7 +14,7 @@ function isAgentEventType(value: unknown): value is AgentEventType {
   );
 }
 
-function parseEvent(data: string, eventName: string | undefined): AgentEvent | null {
+export function parseEvent(data: string, eventName: string | undefined): AgentEvent | null {
   try {
     const parsed: unknown = JSON.parse(data);
     if (typeof parsed !== "object" || parsed === null) return null;
@@ -51,7 +44,7 @@ function parseEvent(data: string, eventName: string | undefined): AgentEvent | n
   }
 }
 
-function parseFrame(frame: string): AgentEvent | null {
+export function parseFrame(frame: string): AgentEvent | null {
   const data = frame
     .split(/\r?\n/)
     .filter((line) => line.startsWith("data:"))
@@ -66,31 +59,11 @@ function parseFrame(frame: string): AgentEvent | null {
   return parseEvent(data, eventName);
 }
 
-export async function streamTask(
-  payload: TaskCreate,
+export async function readSseStream(
+  response: Response,
   onEvent: (event: AgentEvent) => void,
-  signal?: AbortSignal,
 ): Promise<void> {
-  let response: Response;
-  try {
-    response = await fetch(apiUrl("/api/chat"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify(payload),
-      signal,
-    });
-  } catch (error) {
-    if (signal?.aborted) throw new DOMException("Stream stopped", "AbortError");
-    const message = error instanceof Error ? error.message : "network request failed";
-    throw new ApiError(`Stream unavailable: ${message}`, 0);
-  }
-  if (!response.ok || !response.body) {
-    const message = response.ok
-      ? "The backend returned an empty stream"
-      : `${response.status} ${response.statusText}`;
-    throw new ApiError(message, response.status);
-  }
-
+  if (!response.body) return;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

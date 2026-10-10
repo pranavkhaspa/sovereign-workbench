@@ -1,7 +1,6 @@
 import { create } from "zustand";
 
-import { api } from "../api/client";
-import { streamTask } from "../api/sse";
+import { api, streamTask, streamTaskEvents } from "../api/client";
 import type { AgentEvent, AgentEventType, Task, TaskCreate, TaskStep } from "../api/types";
 
 export type StreamState =
@@ -232,9 +231,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     }),
 
   stop: () => {
+    const taskId = get().taskId;
     activeController?.abort();
     activeController = null;
     set({ running: false, streamState: "stopped", error: null });
+    if (taskId) void api.cancelTask(taskId).catch(() => undefined);
   },
 
   reconnect: async () => {
@@ -244,6 +245,51 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const controller = new AbortController();
     activeController = controller;
     set({ running: true, streamState: "connecting", error: null });
+
+    // Replay the persisted event stream first: it carries the token text that
+    // task steps cannot reconstruct. Accumulate locally so a failed replay
+    // never wipes what is already on screen.
+    let terminal = false;
+    let replayed = 0;
+    let timeline: TimelineEntry[] = [];
+    let answer = "";
+    const handle = (event: AgentEvent): void => {
+      if (activeController !== controller) return;
+      replayed += 1;
+      if (event.type === "task_created") {
+        set({ taskId: asString(event.data.task_id, event.task_id), streamState: "streaming" });
+      }
+      if (event.type === "token") {
+        answer += asString(event.data.text);
+        set({ answer });
+        return;
+      }
+      timeline = [...timeline, addEntry(event)];
+      set({ timeline });
+      if (event.type === "done") {
+        terminal = true;
+        set({ running: false, streamState: "complete" });
+      }
+      if (event.type === "error") {
+        terminal = true;
+        set({
+          running: false,
+          streamState: "error",
+          error: asString(event.data.message, "The agent reported an error."),
+        });
+      }
+    };
+
+    try {
+      await streamTaskEvents(taskId, handle, controller.signal);
+    } catch {
+      // Fall through to the step-polling fallback below.
+    }
+    if (activeController !== controller) return;
+    if (replayed > 0 && terminal) {
+      activeController = null;
+      return;
+    }
 
     try {
       let task: Task | null = null;

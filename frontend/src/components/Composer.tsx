@@ -11,6 +11,7 @@ interface Props {
   running: boolean;
   disabled?: boolean;
   onDocumentsUploaded?: () => void;
+  onStop?: () => void;
   onSubmit: (
     prompt: string,
     modelId: string | null,
@@ -27,6 +28,7 @@ export function Composer({
   running,
   disabled = false,
   onDocumentsUploaded,
+  onStop,
   onSubmit,
 }: Props): JSX.Element {
   const [prompt, setPrompt] = useState(
@@ -132,7 +134,8 @@ export function Composer({
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
-            submit();
+            if (running) onStop?.();
+            else submit();
           }
         }}
         placeholder="Example: compare the inspection findings with the maintenance SOP and draft an approval note..."
@@ -286,22 +289,20 @@ export function Composer({
           </label>
           <span className="muted-text">Ctrl / ⌘ + Enter to run</span>
         </div>
-        <button
-          className="button button-primary run-button"
-          type="button"
-          onClick={submit}
-          disabled={running || disabled || !prompt.trim() || uploading}
-        >
-          {running ? (
-            <>
-              <span className="button-spinner" /> Executing
-            </>
-          ) : (
-            <>
-              Run task <span>→</span>
-            </>
-          )}
-        </button>
+        {running ? (
+          <button className="button button-danger run-button" type="button" onClick={onStop}>
+            <span className="stop-glyph" aria-hidden="true" /> Stop run
+          </button>
+        ) : (
+          <button
+            className="button button-primary run-button"
+            type="button"
+            onClick={submit}
+            disabled={disabled || !prompt.trim() || uploading}
+          >
+            Run task <span>→</span>
+          </button>
+        )}
       </div>
       {uploadError && <p className="inline-error">{uploadError}</p>}
     </section>

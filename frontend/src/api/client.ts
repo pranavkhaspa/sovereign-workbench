@@ -1,100 +1,103 @@
+import { ApiError } from "./errors";
+import { transport } from "./transport";
 import type {
+  AgentEvent,
   Artifact,
   AuditEvent,
   Chunk,
   Document,
   EgressStatus,
   HealthStatus,
+  ModelInfo,
   ModelList,
   Task,
   TaskCreate,
 } from "./types";
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
+export { ApiError };
 
-export class ApiError extends Error {
-  readonly status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-  }
-}
-
-function apiUrl(path: string): string {
-  return `${API_BASE}${path}`;
-}
-
-async function getErrorMessage(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (typeof body === "object" && body !== null && "detail" in body) {
-      const detail = body.detail;
-      if (typeof detail === "string") return detail;
-    }
-    if (typeof body === "object" && body !== null && "error" in body) {
-      const error = body.error;
-      if (typeof error === "object" && error !== null && "message" in error) {
-        const message = error.message;
-        if (typeof message === "string") return message;
-      }
-    }
-  } catch {
-    // The server may return an empty or non-JSON error body.
-  }
-  return `${response.status} ${response.statusText || "request failed"}`;
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(apiUrl(path), init);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "network request failed";
-    throw new ApiError(`Backend unavailable: ${message}`, 0);
-  }
-  if (!response.ok) {
-    throw new ApiError(await getErrorMessage(response), response.status);
-  }
-  return (await response.json()) as T;
+export interface AuditQuery {
+  limit?: number;
+  type?: string;
 }
 
 export const api = {
-  health: () => request<HealthStatus>("/api/health"),
-  egress: () => request<EgressStatus>("/api/health/egress"),
-  models: () => request<ModelList>("/api/models"),
-  refreshModels: () => request<ModelList>("/api/models/refresh", { method: "POST" }),
-  tasks: () => request<Task[]>("/api/tasks?limit=50"),
+  health: () => transport.request<HealthStatus>("/api/health"),
+  egress: () => transport.request<EgressStatus>("/api/health/egress"),
+  models: () => transport.request<ModelList>("/api/models"),
+  model: (id: string) => transport.request<ModelInfo>(`/api/models/${encodeURIComponent(id)}`),
+  refreshModels: () => transport.request<ModelList>("/api/models/refresh", { method: "POST" }),
+  tasks: () => transport.request<Task[]>("/api/tasks?limit=50"),
   task: (id: string, signal?: AbortSignal) =>
-    request<Task>(`/api/tasks/${encodeURIComponent(id)}`, { signal }),
+    transport.request<Task>(`/api/tasks/${encodeURIComponent(id)}`, { signal }),
   createTask: (payload: TaskCreate) =>
-    request<Task>("/api/tasks", {
+    transport.request<Task>("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
-  documents: () => request<Document[]>("/api/documents"),
-  documentSearch: (query: string, topK = 5) =>
-    request<Chunk[]>(`/api/documents/search?q=${encodeURIComponent(query)}&top_k=${topK}`),
+  cancelTask: (id: string) =>
+    transport.request<{ ok: boolean }>(`/api/tasks/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+    }),
+  documents: () => transport.request<Document[]>("/api/documents"),
+  document: (id: string) =>
+    transport.request<Document>(`/api/documents/${encodeURIComponent(id)}`),
+  deleteDocument: (id: string) =>
+    transport.request<{ ok: boolean }>(`/api/documents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  searchDocuments: async (query: string, topK = 5): Promise<Chunk[]> => {
+    try {
+      return await transport.request<Chunk[]>("/api/documents/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, top_k: topK }),
+      });
+    } catch (error) {
+      const notSupported = error instanceof ApiError && (error.status === 404 || error.status === 405);
+      if (!notSupported) throw error;
+      return transport.request<Chunk[]>(
+        `/api/documents/search?q=${encodeURIComponent(query)}&top_k=${topK}`,
+      );
+    }
+  },
+  documentSearch: (query: string, topK = 5) => api.searchDocuments(query, topK),
   artifacts: (taskId?: string) =>
-    request<Artifact[]>(
+    transport.request<Artifact[]>(
       taskId ? `/api/artifacts?task_id=${encodeURIComponent(taskId)}` : "/api/artifacts",
     ),
-  audit: () => request<AuditEvent[]>("/api/audit?limit=200"),
+  artifact: (id: string) =>
+    transport.request<Artifact>(`/api/artifacts/${encodeURIComponent(id)}`),
+  audit: ({ limit = 200, type }: AuditQuery = {}) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (type) params.set("type", type);
+    return transport.request<AuditEvent[]>(`/api/audit?${params.toString()}`);
+  },
 };
 
 export async function uploadDocument(
   file: File,
 ): Promise<{ document_id: string; chunks: number; status: string }> {
-  const form = new FormData();
-  form.append("file", file);
-  return request<{ document_id: string; chunks: number; status: string }>("/api/documents", {
-    method: "POST",
-    body: form,
-  });
+  return transport.upload(file);
 }
 
 export function artifactDownloadUrl(id: string): string {
-  return apiUrl(`/api/artifacts/${encodeURIComponent(id)}/download`);
+  return transport.downloadUrl(id);
+}
+
+export function streamTask(
+  payload: TaskCreate,
+  onEvent: (event: AgentEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return transport.chatStream(payload, onEvent, signal);
+}
+
+export function streamTaskEvents(
+  taskId: string,
+  onEvent: (event: AgentEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return transport.taskEventsStream(taskId, onEvent, signal);
 }
