@@ -7,6 +7,8 @@ export const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? "").toLowerCase() === 
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
+export { API_BASE };
+
 export function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
@@ -31,6 +33,7 @@ export interface Transport {
   ): Promise<void>;
   upload(file: File): Promise<UploadResult>;
   downloadUrl(id: string): string;
+  readArtifact(id: string): Promise<string>;
 }
 
 async function getErrorMessage(response: Response): Promise<string> {
@@ -129,12 +132,27 @@ async function upload(file: File): Promise<UploadResult> {
   return request<UploadResult>("/api/documents", { method: "POST", body: form });
 }
 
+async function readArtifact(id: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`/api/artifacts/${encodeURIComponent(id)}/download`));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "network request failed";
+    throw new ApiError(`Artifact unavailable: ${message}`, 0);
+  }
+  if (!response.ok) {
+    throw new ApiError(await getErrorMessage(response), response.status);
+  }
+  return response.text();
+}
+
 export const fetchTransport: Transport = {
   request,
   chatStream,
   taskEventsStream,
   upload,
   downloadUrl: (id) => apiUrl(`/api/artifacts/${encodeURIComponent(id)}/download`),
+  readArtifact,
 };
 
 export const transport: Transport = USE_MOCK ? mockTransport : fetchTransport;

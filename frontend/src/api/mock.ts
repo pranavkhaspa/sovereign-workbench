@@ -519,4 +519,10 @@ export const mockTransport: Transport = {
     });
   },
   downloadUrl,
+  async readArtifact(id: string): Promise<string> {
+    const text = state.artifactText[id];
+    if (text === undefined) throw new ApiError(`Artifact ${id} not found`, 404);
+    await sleep(REQUEST_DELAY_MS);
+    return text;
+  },
 };

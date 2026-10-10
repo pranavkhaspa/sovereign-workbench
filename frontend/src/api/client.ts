@@ -69,6 +69,7 @@ export const api = {
     ),
   artifact: (id: string) =>
     transport.request<Artifact>(`/api/artifacts/${encodeURIComponent(id)}`),
+  artifactText: (id: string) => transport.readArtifact(id),
   audit: ({ limit = 200, type }: AuditQuery = {}) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (type) params.set("type", type);
