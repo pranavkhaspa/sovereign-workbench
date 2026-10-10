@@ -1,7 +1,14 @@
 import { create } from "zustand";
 
 import { api, streamTask, streamTaskEvents } from "../api/client";
-import type { AgentEvent, AgentEventType, Task, TaskCreate, TaskStep } from "../api/types";
+import type {
+  AgentEvent,
+  AgentEventType,
+  Citation,
+  Task,
+  TaskCreate,
+  TaskStep,
+} from "../api/types";
 
 export type StreamState =
   "idle" | "connecting" | "streaming" | "complete" | "stopped" | "error" | "disconnected";
@@ -22,6 +29,7 @@ interface WorkbenchState {
   taskId: string | null;
   answer: string;
   timeline: TimelineEntry[];
+  citations: Citation[];
   error: string | null;
   run: (payload: TaskCreate) => Promise<void>;
   reconnect: () => Promise<void>;
@@ -212,12 +220,34 @@ function addEntry(event: AgentEvent): TimelineEntry {
   }
 }
 
+function citationKey(citation: Citation): string {
+  return `${citation.document_id}:${citation.page ?? "-"}:${citation.span ?? "-"}`;
+}
+
+function mergeCitations(current: Citation[], data: Record<string, unknown>): Citation[] {
+  const raw = data.citations;
+  if (!Array.isArray(raw) || raw.length === 0) return current;
+  const merged = [...current];
+  const seen = new Set(merged.map(citationKey));
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const citation = item as Citation;
+    if (typeof citation.document_id !== "string" || typeof citation.filename !== "string") continue;
+    const key = citationKey(citation);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(citation);
+  }
+  return merged;
+}
+
 export const useWorkbench = create<WorkbenchState>((set, get) => ({
   running: false,
   streamState: "idle",
   taskId: null,
   answer: "",
   timeline: [],
+  citations: [],
   error: null,
 
   reset: () =>
@@ -227,6 +257,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       taskId: null,
       answer: "",
       timeline: [],
+      citations: [],
       error: null,
     }),
 
@@ -265,7 +296,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         return;
       }
       timeline = [...timeline, addEntry(event)];
-      set({ timeline });
+      set({ timeline, citations: mergeCitations(get().citations, event.data) });
       if (event.type === "done") {
         terminal = true;
         set({ running: false, streamState: "complete" });
@@ -350,6 +381,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       taskId: null,
       answer: "",
       timeline: [],
+      citations: [],
       error: null,
     });
 
@@ -361,6 +393,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       }
       if (event.type !== "token") {
         set((state) => ({ timeline: [...state.timeline, addEntry(event)] }));
+      }
+      if (event.type === "tool_result" || event.type === "done") {
+        set((state) => ({ citations: mergeCitations(state.citations, event.data) }));
       }
       if (event.type === "token") {
         set((state) => ({ answer: state.answer + asString(event.data.text) }));
