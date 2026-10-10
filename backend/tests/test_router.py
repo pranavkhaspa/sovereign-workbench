@@ -38,3 +38,16 @@ def test_route_switches_between_code_and_general_tasks():
     summary = router.route("summarise this inspection report").spec
     assert code.id == "coder-min"
     assert summary.id != code.id
+
+
+def test_router_uses_larger_tier_without_exceeding_ceiling(monkeypatch):
+    import pytest
+
+    from sovereign_workbench.core.llm.router import NoModelAvailable
+
+    registry = get_registry()
+    assert ModelRouter(registry, tier="large").route("Write python code").spec.id == "coder-large"
+    monkeypatch.setattr(registry, "probed", True)
+    monkeypatch.setattr(registry, "_available", {"coder-large": True})
+    with pytest.raises(NoModelAvailable):
+        ModelRouter(registry, tier="min").route("Write python code")

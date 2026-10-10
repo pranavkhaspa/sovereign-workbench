@@ -57,6 +57,14 @@ class StepRow(Base):
     task: Mapped[TaskRow] = relationship(back_populates="steps")
 
 
+class TaskEventRow(Base):
+    __tablename__ = "task_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    payload: Mapped[str] = mapped_column(Text)
+
+
 class DocumentRow(Base):
     __tablename__ = "documents"
 

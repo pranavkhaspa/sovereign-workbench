@@ -37,17 +37,34 @@ def _fallback_pdf_text(path: Path) -> str:
         return ""
 
 
-def extract_pdf_pages(path: Path, *, language: str = "eng") -> list[str]:
+def extract_pdf_pages(
+    path: Path, *, language: str = "eng", page_numbers: list[int] | None = None
+) -> list[str]:
     """OCR image-only PDFs when the optional local renderer is installed."""
     try:
         import pytesseract  # lazy
-        from pdf2image import convert_from_path  # lazy
+        from pdf2image import convert_from_path, pdfinfo_from_path  # lazy
     except ImportError:
         fallback = _fallback_pdf_text(path)
         return [fallback] if fallback else []
     try:
-        images = convert_from_path(path, dpi=180, thread_count=1)
-        return [pytesseract.image_to_string(image, lang=language).strip() for image in images]
+        numbers = page_numbers or list(range(1, int(pdfinfo_from_path(str(path))["Pages"]) + 1))
+        pages = []
+        for number in numbers:
+            images = convert_from_path(
+                path, dpi=180, thread_count=1, first_page=number, last_page=number, timeout=60
+            )
+            try:
+                pages.append(
+                    "\n".join(
+                        pytesseract.image_to_string(image, lang=language, timeout=60).strip()
+                        for image in images
+                    )
+                )
+            finally:
+                for image in images:
+                    image.close()
+        return pages
     except Exception as exc:
         log.warning(
             "pdf OCR failed",

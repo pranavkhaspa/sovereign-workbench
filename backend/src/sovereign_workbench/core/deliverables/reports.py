@@ -6,7 +6,7 @@ which is exactly the artefact the problem statement asks the workbench to produc
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sovereign_workbench.core.deliverables.docx import write_docx
@@ -21,7 +21,7 @@ def build_approval_note(
     references: list[str] | None = None,
     prepared_by: str = "Sovereign Workbench",
 ) -> Path:
-    today = datetime.now(timezone.utc).strftime("%d %b %Y")
+    today = datetime.now(UTC).strftime("%d %b %Y")
     paragraphs = [
         f"Date: {today}",
         f"Prepared by: {prepared_by}",
@@ -33,4 +33,6 @@ def build_approval_note(
     ]
     paragraphs.extend(f"   {i}. {finding}" for i, finding in enumerate(findings, start=1))
     paragraphs.extend(["", "3. Recommendation", recommendation])
-    return write_docx(destination, title="Approval Note", paragraphs=paragraphs, citations=references)
+    return write_docx(
+        destination, title="Approval Note", paragraphs=paragraphs, citations=references
+    )

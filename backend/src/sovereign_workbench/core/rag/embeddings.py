@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import re
 from typing import Protocol
 
@@ -52,9 +53,16 @@ class HashingEmbedder:
 
 class SentenceTransformerEmbedder:
     def __init__(self, model_name: str) -> None:
+        if get_settings().airgap:
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
         from sentence_transformers import SentenceTransformer  # lazy, heavy
 
-        self._model = SentenceTransformer(model_name, device="cpu")
+        self.model_name = model_name
+        self._model = SentenceTransformer(
+            model_name, device="cpu", local_files_only=get_settings().airgap
+        )
         self.dim = int(self._model.get_sentence_embedding_dimension())
 
     def embed(self, texts: list[str]) -> list[list[float]]:
@@ -74,14 +82,7 @@ def get_embedder() -> Embedder:
         return _embedder
     settings = get_settings()
     if settings.embedding_provider == "sentence-transformers":
-        try:
-            _embedder = SentenceTransformerEmbedder(settings.embed_model)
-        except Exception as exc:  # noqa: BLE001
-            log.warning(
-                "falling back to hashing embedder",
-                extra={"extra_fields": {"error": str(exc)}},
-            )
-            _embedder = HashingEmbedder()
+        _embedder = SentenceTransformerEmbedder(settings.embed_model)
     else:
         _embedder = HashingEmbedder()
     return _embedder
@@ -90,3 +91,7 @@ def get_embedder() -> Embedder:
 def reset_embedder() -> None:
     global _embedder
     _embedder = None
+
+
+def is_model_loaded(name: str) -> bool:
+    return isinstance(_embedder, SentenceTransformerEmbedder) and _embedder.model_name == name

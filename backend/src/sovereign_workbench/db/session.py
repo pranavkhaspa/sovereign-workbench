@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -21,7 +21,19 @@ def _get_engine() -> Engine:
         settings.ensure_dirs()
         connect_args = {"check_same_thread": False}
         _engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
+        if settings.database_url.startswith("sqlite"):
+            event.listen(_engine, "connect", _enable_sqlite_features)
     return _engine
+
+
+def _enable_sqlite_features(dbapi_connection: object, _: object) -> None:
+    """Enable SQLite behaviour required by the cascade relationships and concurrency."""
+    connection = dbapi_connection
+    cursor = connection.cursor()  # type: ignore[attr-defined]
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
 
 
 def _get_sessionmaker() -> sessionmaker[Session]:

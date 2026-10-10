@@ -17,3 +17,12 @@ def test_blocked_egress_is_counted_and_audited(client, monkeypatch):
     audit = client.get("/api/audit", params={"type": "egress_blocked"})
     assert audit.status_code == 200
     assert any(event["data"]["host"] == "api.example.com" for event in audit.json())
+
+
+def test_egress_totals_survive_guard_restart(client, monkeypatch):
+    from sovereign_workbench.core.security.airgap import get_egress_guard
+
+    with pytest.raises(EgressBlocked):
+        get_egress_guard().check("https://example.com/")
+    monkeypatch.setattr("sovereign_workbench.core.security.airgap._guard", None)
+    assert client.get("/api/audit/egress").json()["blocked"] == 1

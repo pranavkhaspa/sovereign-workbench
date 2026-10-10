@@ -20,12 +20,34 @@ log = get_logger(__name__)
 _TIER_RANK = {"min": 0, "standard": 1, "large": 2, "remote": 3}
 
 _CODE_HINTS = (
-    "code", "function", "script", "bug", "traceback", "compile", "python", "javascript",
-    "typescript", "sql", "regex", "refactor", "unit test", "error", "stack trace",
+    "code",
+    "function",
+    "script",
+    "bug",
+    "traceback",
+    "compile",
+    "python",
+    "javascript",
+    "typescript",
+    "sql",
+    "regex",
+    "refactor",
+    "unit test",
+    "error",
+    "stack trace",
 )
 _VISION_HINTS = (
-    "image", "photo", "drawing", "diagram", "scan", "scanned", "p&id", "blueprint",
-    "handwritten", "figure", "screenshot",
+    "image",
+    "photo",
+    "drawing",
+    "diagram",
+    "scan",
+    "scanned",
+    "p&id",
+    "blueprint",
+    "handwritten",
+    "figure",
+    "screenshot",
 )
 
 _FALLBACK: dict[Capability, list[Capability]] = {
@@ -70,14 +92,12 @@ class ModelRouter:
         if model_id:
             spec = self.registry.get(model_id)
             if spec is not None:
-                return RouteDecision(spec, self._capability_for(spec), "explicit selection")
+                decision = RouteDecision(spec, self._capability_for(spec), "explicit selection")
+                self._record(decision)
+                return decision
         capability = self.classify(text, has_image=has_image)
         decision = self._pick(capability)
-        get_audit_log().record(
-            "model_selected",
-            detail=f"{capability} -> {decision.spec.id} ({decision.reason})",
-            data={"capability": capability, "model": decision.spec.id, "tier": self.tier},
-        )
+        self._record(decision)
         return decision
 
     def route_capability(
@@ -90,13 +110,11 @@ class ModelRouter:
         if model_id:
             spec = self.registry.get(model_id)
             if spec is not None and capability in spec.capabilities:
-                return RouteDecision(spec, capability, "explicit selection")
+                decision = RouteDecision(spec, capability, "explicit selection")
+                self._record(decision)
+                return decision
         decision = self._pick(capability)
-        get_audit_log().record(
-            "model_selected",
-            detail=f"{capability} -> {decision.spec.id} ({decision.reason})",
-            data={"capability": capability, "model": decision.spec.id, "tier": self.tier},
-        )
+        self._record(decision)
         return decision
 
     def _pick(self, capability: Capability) -> RouteDecision:
@@ -104,22 +122,44 @@ class ModelRouter:
             spec = self._best_for(candidate, strict=True)
             if spec is not None:
                 return RouteDecision(spec, capability, f"{capability} within tier {self.tier}")
-        for candidate in _FALLBACK.get(capability, [capability]):
-            spec = self._best_for(candidate, strict=False)
-            if spec is not None:
-                return RouteDecision(spec, capability, f"{capability} (widened past tier)")
         raise NoModelAvailable(capability)
 
     def _best_for(self, capability: Capability, *, strict: bool) -> ModelSpec | None:
         pool = [s for s in self.registry.candidates(capability) if self.registry.is_available(s)]
         if not pool and not self.registry.probed:
             # If nothing has been probed yet, optimistically consider declared models.
-            pool = self.registry.candidates(capability)
+            pool = [
+                s
+                for s in self.registry.candidates(capability)
+                if self.registry.provider_for(s) is not None
+            ]
         if strict:
-            pool = [s for s in pool if _TIER_RANK.get(s.tier, 0) <= self._ceiling]
+            pool = [
+                s
+                for s in pool
+                if (
+                    _TIER_RANK.get(s.tier, 0) <= self._ceiling
+                    or (s.remote and not self.registry.airgap)
+                )
+            ]
+        pool = [s for s in pool if not (s.remote and self.registry.airgap)]
+        local = [s for s in pool if not s.remote]
+        if local:
+            pool = local
         if not pool:
             return None
-        return min(pool, key=lambda s: _TIER_RANK.get(s.tier, 0))
+        return max(pool, key=lambda s: _TIER_RANK.get(s.tier, 0))
+
+    def _record(self, decision: RouteDecision) -> None:
+        get_audit_log().record(
+            "model_selected",
+            detail=f"{decision.capability} -> {decision.spec.id} ({decision.reason})",
+            data={
+                "capability": decision.capability,
+                "model": decision.spec.id,
+                "tier": self.tier,
+            },
+        )
 
     @staticmethod
     def _capability_for(spec: ModelSpec) -> Capability:

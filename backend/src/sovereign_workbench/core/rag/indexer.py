@@ -47,6 +47,7 @@ def index_document(
                     index=index,
                     text=chunk.text,
                     page=chunk.page,
+                    span=chunk.span,
                     embedding=json.dumps(embeddings[index]) if embeddings else None,
                 )
             )

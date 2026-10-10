@@ -101,16 +101,19 @@ This is the mechanism that satisfies “model auto-selection across ≥2 task ty
 
 ## 5. RAG (grounding)
 
-`ingest` (pdf/txt/md/docx/img via `multimodal/ocr`) → `chunker` (token-aware, keeps
-source spans) → `embeddings` (bge-small, CPU, lazy) → `store` (embedded vector DB
-behind an interface; default Chroma persistent) → `retriever` (top-k, optional
-rerank). Every returned chunk carries a `Citation` (document id, filename, page/span,
-score) so answers can be verified.
+`indexer` (pdf/txt/md/docx/img/xlsx via `extract` and `multimodal/ocr`) → `chunker`
+(bounded character windows, page and normalized-text spans) → `embeddings`
+(download-free hashing by default; opt-in CPU bge-small) → SQLite cosine `store` →
+top-k `retriever`. Every returned chunk carries a `Citation` (document id, filename,
+page/span, score). Source reads feed observations back into the remaining plan.
+Semantic embeddings use cached files only under AIRGAP. Reindex documents when
+changing embedding providers. See ADR 0002 for the lightweight storage decision.
 
 ## 6. Multimodal
 
-- `ocr.py` — Tesseract by default (`pytesseract`), PaddleOCR optional; turns scanned
-  pages/drawings into text with bounding boxes where available.
+- `ocr.py` — Tesseract (`pytesseract`), with Poppler/pdf2image for PDF rendering.
+  Render one page at a time; mixed PDFs retain native text and OCR their blank pages.
+  PaddleOCR and bounding-box extraction are future extensions.
 - `vision.py` — sends an image + question to the router-selected vision model
   (Moondream2 / SmolVLM on min tier; Qwen2-VL on large) for description and Q&A.
 
@@ -123,13 +126,19 @@ score) so answers can be verified.
   size, no core), restricted env, `cwd` jailed to the workspace. Best-effort; document
   clearly that Docker is required for strong isolation.
 
-The sandbox is chosen at startup: Docker if available, else subprocess.
+The sandbox is selected lazily for code tasks: Docker if its image is already
+available, else subprocess. `SANDBOX_BACKEND=docker` selects Docker explicitly and
+fails if it cannot run. `--pull=never` prevents execution-time downloads. Docker
+mounts source read-only; both drivers bound stdout/stderr and clean up on cancellation.
 
 ## 8. Deliverables
 
-`docx_writer`, `pptx_writer`, `xlsx_writer` produce files into `data/artifacts/` and
-register an `Artifact` row. Calculations are rendered with steps. Code results include
-stdout/stderr and a verification note.
+The `create_document`, `create_approval_note`, `create_presentation`, and
+`create_spreadsheet` tools invoke local writers. Each artifact is copied into its own
+immutable directory under `data/artifacts/<task>/<artifact>/`. XLSX uses XlsxWriter
+with cached arithmetic/SUM/AVERAGE/MIN/MAX/ABS results; reads use openpyxl.
+`calculate` reports intermediate arithmetic steps. Code results include downloadable
+source and a stdout/stderr/exit-status log.
 
 ## 9. Security: egress guard + audit
 
@@ -146,7 +155,11 @@ See [`SOVEREIGNTY.md`](SOVEREIGNTY.md) for how we prove the claim.
 
 SQLite (single file, zero-ops) via SQLAlchemy 2.0, sync engine, plus a local vector
 store directory. Tables: `tasks`, `steps`, `documents`, `chunks`, `artifacts`,
-`audit_events`. Easy to migrate to Postgres later by swapping `DATABASE_URL`.
+`audit_events`, `task_events`. SQLite foreign keys, WAL and a busy timeout are enabled.
+The scheduler is single-process and serializes runs. All SSE events, including tokens,
+are persisted and replayable with a numeric event cursor. A disconnected subscriber
+does not stop execution; explicit cancellation interrupts it. Startup recovery marks
+previously running tasks interrupted without repeating tool side effects.
 
 ## 11. Configuration & hardware tiers
 
@@ -168,3 +181,11 @@ code runs on the i3/8 GB laptop and on the MRPL GPU server with only env changes
   deliverable writers produce valid files.
 - Integration: create task → fake provider → tool calls → artifact row; SSE event order.
 - CI runs with `AIRGAP=true` and **no network**; any accidental egress fails the build.
+
+## 14. Dependency policy
+
+Application libraries/model weights are permissive by default. The existing HTTPX
+stack needs unmodified MPL-2.0 certifi, and Black needs development-only MPL-2.0 pathspec.
+CI checks those named exceptions separately. Local Poppler is a separately distributed
+GPL program. See ADR 0002; the application remains Apache-2.0, but the complete runtime
+must not be described as all-permissive.

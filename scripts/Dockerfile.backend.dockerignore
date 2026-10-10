@@ -1,8 +1,11 @@
 *
 !backend/
 !backend/pyproject.toml
+!backend/README.md
 !backend/src/
 !backend/src/**
+backend/src/**/__pycache__/
+backend/src/**/*.pyc
 !models/
 !models/**
 !scripts/

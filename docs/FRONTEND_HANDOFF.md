@@ -120,14 +120,14 @@ already handles both the normalized `error` shape and legacy `detail` responses.
 {
   "models": [
     {
-      "id": "qwen2.5-3b-instruct",
+      "id": "planner-min",
       "label": "...",
       "provider": "ollama",
       "remote": false,
       "tier": "min",
       "capabilities": ["plan", "chat"],
       "available": true,
-      "size_hint": "3b",
+      "size_hint": null,
       "notes": "..."
     }
   ]
@@ -162,7 +162,7 @@ the live SSE response in one request. The request body is:
 }
 ```
 
-`attachments` contains indexed document IDs from `/api/documents`, not local file
+`attachments` contains document IDs from `/api/documents`, not local file
 paths. The upload must complete before the document can be attached.
 
 The response is `text/event-stream`. Each frame is separated by a blank line and
@@ -174,7 +174,8 @@ data: {"type":"token","task_id":"...","at":"...","data":{"text":"..."}}
 
 ```
 
-Events currently emitted are:
+Persisted frames additionally include `id: <integer>` before `event:` and an `id`
+field in the JSON envelope. Treat it as an opaque resume cursor. Events emitted are:
 
 | Event | Important `data` fields |
 | --- | --- |
@@ -182,10 +183,10 @@ Events currently emitted are:
 | `plan` | `steps[]`, `model_id`, `planning_model_id`, `capability` |
 | `step_start` | `index`, `title` |
 | `tool_call` | `tool`, `args` |
-| `tool_result` | `tool`, `ok`, `output`, `error` |
+| `tool_result` | `tool`, `ok`, `output`, `error`, structured `data` (citations/calculations/etc.) |
 | `token` | `text` |
 | `artifact` | artifact fields including `id`, `filename`, `kind`, `size_bytes` |
-| `done` | `artifacts[]` |
+| `done` | `artifacts[]`, `citations[]` |
 | `error` | `code`, `message`, optional `tool` |
 
 The existing `src/api/sse.ts` uses `fetch`, not `EventSource`, because the stream
@@ -197,14 +198,25 @@ There is also a two-request task flow for reconnect/history work:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/tasks` | Create and persist a task; returns a full `Task` with HTTP 201 |
-| GET | `/api/tasks?limit=50` | Recent task history |
+| GET | `/api/tasks?limit=50&cursor=<last-task-id>` | Recent task history, descending order |
 | GET | `/api/tasks/{id}` | Full task, persisted steps, and artifacts |
-| GET | `/api/tasks/{id}/events` | SSE replay/continuation for a persisted task |
+| GET | `/api/tasks/{id}/events?after=<event-id>` | SSE replay/continuation; also accepts `Last-Event-ID` |
 | POST | `/api/tasks/{id}/cancel` | Cancel a queued/running task; returns `{ok: true}` |
 
 The current UI uses `GET /api/tasks/{id}` for recovery. A stop button currently
 stops the browser stream; wiring it to the cancel route is a high-priority follow-up
 before calling cancellation complete.
+
+Execution begins on the first SSE subscription and continues after a disconnect.
+Multiple subscribers do not execute the task twice. All tokens and events survive
+a backend restart. Previously running work becomes `error/TASK_INTERRUPTED` after
+a crash; the user may submit a new task. Runs are serialized on the minimum tier.
+Final answers stream actual provider tokens. The agent may emit additional `plan`
+events for recovery; never assume a single plan event per run.
+
+Artifact tools can always produce the requested downloadable deliverable. `write_files`
+controls the general `write_file` tool; `run_code` controls sandbox execution. Code runs
+produce a source artifact and a separate `.log` with stdout, stderr, exit and timeout.
 
 ### Documents and search
 
@@ -240,26 +252,30 @@ Status of the original gap list after `feat/frontend-rohit-batch`:
 1. **Resolved.** The stop control calls `POST /api/tasks/{id}/cancel` first, then
    aborts the browser stream; the Composer shows an inline Stop button and Esc stops
    a running task.
-2. **Resolved.** Reconnect prefers `/api/tasks/{id}/events` (event replay, appended
-   to the locally accumulated timeline) whenever a `taskId` exists, and falls back to
-   task polling when it does not. Replay is labelled as replay, not as live SSE.
+2. **Resolved.** Reconnect resumes `/api/tasks/{id}/events?after=<last-event-id>`
+   from the cursor carried by `id:` frames, so replayed token text is never
+   duplicated; without a cursor it rebuilds from a full replay, and task polling
+   remains the fallback when the stream cannot open.
 3. **Resolved.** Document delete (confirmation dialog + toast, index refreshed) and
    artifact previews: `CodeViewer` for code/text artifacts, `DocPreview` for
-   `.docx`/`.xlsx` extracts, both behind the artifact Preview dialog.
-4. **Resolved.** Vitest suite: SSE framing, API error normalisation and the search
-   fallback, every mock route, the scripted agent stream (including replay and
-   abort), model grouping, timeline rows/timing, and artifact list states.
+   `.docx`/`.xlsx`/`.pptx` deliverables (binary files offer download, not a text
+   extract), both behind the artifact Preview dialog.
+4. **Resolved.** Vitest suite: SSE framing and id parsing, API error normalisation
+   and the search fallback, every mock route, the scripted agent stream (including
+   cursor replay and abort), model grouping, timeline rows/timing, and artifact
+   list states.
 5. **Resolved.** Loading, empty, and error states exist for each panel; the
    sovereignty display is screenshot-ready (shot list in `docs/DEMO.md`).
 6. **Deferred on purpose.** Reconciling the future `features/` directory plan with
    the current `src/pages/` + `src/components/` structure: `CHECKLIST.md §7` now
    records the deviation, so a rename can be done later as its own change.
 
-Also delivered beyond that list: markdown answers with citation chips (the backend
-now emits `citations` on `tool_result` and `done`), a Settings view with a dark/light
-theme switch and copy-diagnostics, capability grouping in the model picker with an
-air-gap hint, timeline elapsed timings and copy-to-clipboard on expanded detail, and
-global shortcuts (`/`, Esc, ⌘/Ctrl+Shift+T, ⌘/Ctrl+Shift+S).
+Also delivered beyond that list: markdown answers with citation chips (fed by the
+`citations` the backend emits on `tool_result` and `done`), a Settings view with a
+dark/light theme switch and copy-diagnostics, capability grouping in the model
+picker with an air-gap hint, a "Plan revised" row when the agent replans mid-run,
+timeline elapsed timings and copy-to-clipboard on expanded detail, and global
+shortcuts (`/`, Esc, ⌘/Ctrl+Shift+T, ⌘/Ctrl+Shift+S).
 
 ## 6. Coordination rules
 

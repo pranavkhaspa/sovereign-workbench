@@ -9,6 +9,7 @@ from dataclasses import dataclass
 class RawChunk:
     text: str
     page: int | None
+    span: str | None = None
 
 
 def chunk_pages(
@@ -31,7 +32,13 @@ def chunk_pages(
                 cut = normalized.rfind(" ", start + size // 2, end)
                 if cut > start:
                     end = cut
-            chunks.append(RawChunk(text=normalized[start:end].strip(), page=page))
+            chunks.append(
+                RawChunk(
+                    text=normalized[start:end].strip(),
+                    page=page,
+                    span=f"{start}:{end}",
+                )
+            )
             if end >= len(normalized):
                 break
             start = max(end - overlap, start + 1)

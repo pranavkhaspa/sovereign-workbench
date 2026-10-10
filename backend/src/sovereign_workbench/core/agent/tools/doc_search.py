@@ -26,7 +26,7 @@ class SearchDocumentsTool(Tool):
             from sovereign_workbench.core.rag.retriever import get_retriever
 
             chunks = get_retriever().search(args.query, top_k=args.top_k)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult(ok=False, error=f"retrieval failed: {exc}")
         if not chunks:
             return ToolResult(ok=True, output="(no matching documents)", data={"results": []})
@@ -35,7 +35,7 @@ class SearchDocumentsTool(Tool):
         for chunk in chunks:
             cite = chunk.citation
             lines.append(f"[{cite.filename}{f' p.{cite.page}' if cite.page else ''}] {chunk.text}")
-            citations.append(cite.model_dump())
+            citations.append(cite.model_dump(mode="json"))
         return ToolResult(
             ok=True,
             output="\n\n".join(lines),

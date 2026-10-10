@@ -72,17 +72,20 @@ visible **sovereignty panel** (external network calls: 0).
    hardcoded calls.
 4. **Two-person team.** One backend/infra owner, one frontend owner (Rohit). Keep the
    API contract stable so both can work in parallel.
-5. **Open source first.** Every runtime dependency must be open source with a
-   permissive licence. No closed SaaS required for core function.
+5. **Open source first.** Application dependencies and model weights use permissive
+   licences by default. The named unmodified MPL-2.0 exceptions (`certifi`, development
+   `pathspec`) and separately packaged OCR executables are recorded in ADR 0002;
+   do not claim the entire transitive runtime is permissively licensed.
+   No closed SaaS is required for core function.
 
 ## 6. Model strategy (see `docs/MODELS.md`)
 
 | Role | Minimum tier (8 GB / 2 GB GPU) | Larger tier |
 | --- | --- | --- |
-| General / reasoning | Qwen2.5-3B-Instruct (Q4_K_M) | Qwen2.5-14B / 32B (Q4) |
-| Code | Qwen2.5-Coder-3B-Instruct (Q4) | Qwen2.5-Coder-14B/32B |
+| General / reasoning | Qwen2.5-1.5B-Instruct (Q4_K_M) | Qwen2.5-14B / 32B (Q4) |
+| Code | Qwen2.5-Coder-1.5B-Instruct (Q4) | Qwen2.5-Coder-14B/32B |
 | Fast / utility | Qwen2.5-1.5B-Instruct (Q4) | Qwen2.5-7B |
-| Vision (scanned docs, drawings) | Moondream2 (Q4) or SmolVLM-500M | Qwen2-VL-7B |
+| Vision (scanned docs, drawings) | Moondream2 (Q4) or SmolVLM-500M | Qwen2.5-VL-7B |
 | Embeddings | bge-small-en-v1.5 (CPU) | bge-large / nomic-embed |
 | OCR | Tesseract (default) | PaddleOCR |
 
@@ -119,6 +122,9 @@ via our provider abstraction.
   blocked *and logged*, never silently allowed.
 - Heavy optional dependencies (torch, chromadb, paddleocr) are imported **lazily** so
   the core runs on a thin 8 GB box.
+- The minimum deployment uses SQLite vector search and hashing embeddings; semantic
+  embeddings are an opt-in cached model. Task events are durable and reconnectable;
+  the backend runs one active task in one Uvicorn process. See ADR 0002.
 
 ## 8. Repository layout
 

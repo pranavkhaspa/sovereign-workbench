@@ -37,7 +37,9 @@ class AuditLog:
                     )
                 )
         except Exception:  # auditing must never break the request
-            log.exception("failed to write audit event", extra={"extra_fields": {"type": event_type}})
+            log.exception(
+                "failed to write audit event", extra={"extra_fields": {"type": event_type}}
+            )
 
     def recent(self, *, limit: int = 200, event_type: str | None = None) -> list[dict[str, Any]]:
         from sqlalchemy import desc, select
@@ -53,7 +55,7 @@ class AuditLog:
                     "type": row.type,
                     "actor": row.actor,
                     "detail": row.detail,
-                    "data": json.loads(row.data) if row.data else None,
+                    "data": _decode_data(row.data),
                     "created_at": row.created_at,
                 }
                 for row in rows
@@ -68,3 +70,13 @@ def get_audit_log() -> AuditLog:
     if _log is None:
         _log = AuditLog()
     return _log
+
+
+def _decode_data(raw: str | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"raw": raw}
+    return value if isinstance(value, dict) else {"value": value}

@@ -17,10 +17,12 @@ class AgentMemory:
         self.observations.append(text)
 
     def add_citations(self, citations: list[dict[str, Any]]) -> None:
-        seen = {c.get("document_id") for c in self.citations}
+        seen = {(str(c.get("document_id")), c.get("page"), c.get("span")) for c in self.citations}
         for cite in citations:
-            if cite.get("document_id") not in seen:
+            key = (str(cite.get("document_id")), cite.get("page"), cite.get("span"))
+            if key not in seen:
                 self.citations.append(cite)
+                seen.add(key)
 
     def add_artifact(self, artifact: dict[str, Any]) -> None:
         self.artifacts.append(artifact)
@@ -36,4 +38,6 @@ class AgentMemory:
         if self.artifacts:
             names = ", ".join(a.get("filename", "?") for a in self.artifacts)
             parts.append(f"Artifacts: {names}")
+        if self.observations:
+            parts.append(self.context_text())
         return "\n".join(parts)

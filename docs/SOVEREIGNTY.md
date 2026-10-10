@@ -48,15 +48,24 @@ DNS lookup or non-HTTP connection bypassing the guard does not increment its cou
 
 - The guard protects **this application**. It does not firewall the host; pair it with
   an OS firewall or an isolated deployment network for defence in depth.
-- The implemented subprocess sandbox is best-effort; a Docker code-execution sandbox
-  is still a checklist task. Running the application with Compose does not by itself
-  isolate code executed by the agent.
+- `SANDBOX_BACKEND=auto` uses Docker only when Docker and its pre-pulled image are
+  available. `SANDBOX_BACKEND=docker` fails if that isolation is unavailable. The
+  subprocess fallback patches ordinary Python socket calls and applies resource
+  limits, but it cannot contain hostile native code or subprocess escape attempts.
+  Running the API in Compose does not provide a Docker daemon to the agent; use a
+  host deployment with Docker access for strong code-execution isolation.
 - Packages and model weights are downloaded during setup; afterwards the system can
   run offline. That provisioning traffic is documented in the README so it isn’t
   mistaken for a runtime leak.
 - Host-level socket checks include unrelated host processes. A successful API check is
   not proof of zero egress by all processes; run on the air-gapped host with an OS
   firewall or disconnected external interface for that claim.
+
+Application HTTP clients ignore proxy environment variables. Both allowed local and
+blocked/external-allowed requests are audited; counters are restored from the durable
+audit history on restart. Optional semantic embedding loaders use cached files only
+in AIRGAP mode. Unit tests deny network connections even for local hosts; provider
+protocol tests use in-memory transports.
 
 ## Compose note
 

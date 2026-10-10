@@ -116,25 +116,34 @@ class OpenAICompatibleProvider(ModelProvider):
         max_tokens: int | None = None,
     ) -> AsyncIterator[str]:
         payload = self._payload(spec, messages, temperature, max_tokens, None, stream=True)
-        async with get_client(timeout=self.timeout) as client, client.stream(
-            "POST",
-            f"{self.base_url}/chat/completions",
-            json=payload,
-            headers=self._headers(),
-        ) as resp:
+        async with (
+            get_client(timeout=self.timeout) as client,
+            client.stream(
+                "POST",
+                f"{self.base_url}/chat/completions",
+                json=payload,
+                headers=self._headers(),
+            ) as resp,
+        ):
             resp.raise_for_status()
+            finished = False
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data:"):
                     continue
                 chunk = line.removeprefix("data:").strip()
                 if chunk == "[DONE]":
+                    finished = True
                     break
                 try:
-                    delta = json.loads(chunk)["choices"][0]["delta"].get("content")
+                    choice = json.loads(chunk)["choices"][0]
+                    delta = choice["delta"].get("content")
+                    finished = finished or choice.get("finish_reason") is not None
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
                 if delta:
                     yield delta
+            if not finished:
+                raise RuntimeError("model stream ended before completion")
 
 
 def _to_openai(message: ChatMessage) -> dict[str, Any]:

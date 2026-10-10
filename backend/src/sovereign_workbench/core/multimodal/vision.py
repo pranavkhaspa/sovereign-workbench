@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+from io import BytesIO
 from pathlib import Path
 
 from sovereign_workbench.core.llm.inference import run_chat
@@ -30,18 +32,36 @@ def to_data_url(path: Path) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
+def _image_urls(path: Path) -> list[str]:
+    if path.suffix.lower() != ".pdf":
+        return [to_data_url(path)]
+    from pdf2image import convert_from_path
+
+    images = convert_from_path(path, dpi=120, first_page=1, last_page=3, timeout=60)
+    try:
+        urls = []
+        for image in images:
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            urls.append("data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode())
+        return urls
+    finally:
+        for image in images:
+            image.close()
+
+
 async def describe_image(path: Path, question: str) -> str:
     try:
         decision = get_router().route(question, has_image=True)
     except NoModelAvailable:
         log.info("no vision model available")
         return ""
-    message = ChatMessage("user", question, images=[to_data_url(path)])
     try:
+        message = ChatMessage("user", question, images=await asyncio.to_thread(_image_urls, path))
         completion = await run_chat(
             get_registry(), decision.spec, [message], temperature=0.2, max_tokens=768
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("vision model failed", extra={"extra_fields": {"error": str(exc)}})
         return ""
     return completion.text.strip()

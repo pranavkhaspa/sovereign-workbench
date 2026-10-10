@@ -25,12 +25,12 @@ if TYPE_CHECKING:
 class ToolContext:
     workspace_dir: Path
     artifacts_dir: Path
-    settings: "Settings"
-    task_id: "UUID | None" = None
+    settings: Settings
+    task_id: UUID | None = None
     allow_network: bool = False
     write_files: bool = False
     run_code: bool = False
-    sandbox: "Sandbox | None" = None
+    sandbox: Sandbox | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
 
@@ -40,6 +40,7 @@ class ToolResult:
     output: str = ""
     data: dict[str, Any] = field(default_factory=dict)
     artifact_path: Path | None = None
+    extra_artifacts: list[tuple[Path, str]] = field(default_factory=list)
     error: str | None = None
 
 

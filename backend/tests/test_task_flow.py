@@ -16,15 +16,14 @@ def _patch_model(monkeypatch, *, plan: dict[str, object]) -> None:
         return Completion(text=json.dumps(plan), model_id=spec.id)
 
     async def fake_answer(*args, **kwargs):
-        spec = args[1]
-        return Completion(text="Local run completed with a verified result.", model_id=spec.id)
+        yield "Local run completed with a verified result."
 
     monkeypatch.setattr(
         "sovereign_workbench.core.agent.planner.run_chat",
         fake_plan,
     )
     monkeypatch.setattr(
-        "sovereign_workbench.core.agent.loop.run_chat",
+        "sovereign_workbench.core.agent.loop.run_stream",
         fake_answer,
     )
 
@@ -226,7 +225,12 @@ def test_no_model_and_no_tool_reports_error(client, monkeypatch):
         raise RuntimeError("local model is offline")
 
     monkeypatch.setattr("sovereign_workbench.core.agent.planner.run_chat", unavailable)
-    monkeypatch.setattr("sovereign_workbench.core.agent.loop.run_chat", unavailable)
+
+    async def unavailable_stream(*args, **kwargs):
+        raise RuntimeError("local model is offline")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr("sovereign_workbench.core.agent.loop.run_stream", unavailable_stream)
     created = client.post("/api/tasks", json={"prompt": "Summarise the provided information."})
     assert created.status_code == 201
     task_id = created.json()["id"]

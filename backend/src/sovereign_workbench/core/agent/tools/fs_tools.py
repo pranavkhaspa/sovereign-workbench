@@ -34,11 +34,11 @@ class ListFilesTool(Tool):
             target = _safe_path(ctx, args.path)
             if not target.exists():
                 return ToolResult(ok=False, error=f"not found: {args.path}")
-            entries = sorted(
-                f"{p.name}/" if p.is_dir() else p.name for p in target.iterdir()
+            entries = sorted(f"{p.name}/" if p.is_dir() else p.name for p in target.iterdir())
+            return ToolResult(
+                ok=True, output="\n".join(entries) or "(empty)", data={"count": len(entries)}
             )
-            return ToolResult(ok=True, output="\n".join(entries) or "(empty)", data={"count": len(entries)})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult(ok=False, error=str(exc))
 
 
@@ -63,7 +63,7 @@ class ReadFileTool(Tool):
                 output=clipped,
                 data={"path": str(target), "truncated": len(text) > len(clipped)},
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult(ok=False, error=str(exc))
 
 
@@ -84,6 +84,15 @@ class WriteFileTool(Tool):
             target = _safe_path(ctx, args.path)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(args.content, encoding="utf-8")
-            return ToolResult(ok=True, output=f"wrote {len(args.content)} chars to {args.path}")
-        except Exception as exc:  # noqa: BLE001
+            return ToolResult(
+                ok=True,
+                output=f"wrote {len(args.content)} chars to {args.path}",
+                artifact_path=target,
+                data={
+                    "artifact_kind": (
+                        "code" if target.suffix in {".py", ".js", ".ts", ".sql"} else "text"
+                    )
+                },
+            )
+        except Exception as exc:
             return ToolResult(ok=False, error=str(exc))

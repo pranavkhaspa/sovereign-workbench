@@ -42,6 +42,18 @@ class ModelSpec:
     tags: list[str] = field(default_factory=list)
     notes: str | None = None
 
+    def __post_init__(self) -> None:
+        if not self.id or not self.provider or not self.model_name:
+            raise ValueError("model id, provider and model_name must not be empty")
+        if self.tier not in {"min", "standard", "large", "remote"} or self.context < 1:
+            raise ValueError("invalid model tier or context size")
+        if not self.capabilities or not set(self.capabilities).issubset(
+            {"plan", "chat", "code", "vision", "embed"}
+        ):
+            raise ValueError("invalid model capabilities")
+        if self.provider in {"openai", "openrouter", "anthropic", "gemini"} and not self.remote:
+            raise ValueError("cloud providers must declare remote=true")
+
     def label(self) -> str:
         return self.notes or self.model_name
 
@@ -78,7 +90,5 @@ class ModelProvider(ABC):
         max_tokens: int | None = None,
     ) -> AsyncIterator[str]:
         """Default: non-streaming providers yield the whole answer at once."""
-        completion = await self.chat(
-            spec, messages, temperature=temperature, max_tokens=max_tokens
-        )
+        completion = await self.chat(spec, messages, temperature=temperature, max_tokens=max_tokens)
         yield completion.text

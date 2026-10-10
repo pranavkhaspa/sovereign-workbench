@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 
@@ -75,7 +76,7 @@ class CreateApprovalNoteTool(Tool):
                 failed_sources.append(relative_path)
                 continue
             try:
-                pages = extract_pages(source)
+                pages = await asyncio.to_thread(extract_pages, source)
             except Exception as exc:
                 failed_sources.append(f"{relative_path}: {exc}")
                 continue

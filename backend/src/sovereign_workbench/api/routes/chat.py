@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from sovereign_workbench.api.deps import get_task_runner
+from sovereign_workbench.api.routes.tasks import _sse
 from sovereign_workbench.core.agent.runner import TaskRunner
 from sovereign_workbench.schemas.tasks import TaskCreate
 
 router = APIRouter(tags=["chat"])
-
-
-def _sse(event_type: str, payload: dict[str, object]) -> str:
-    return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
 
 @router.post("/chat")
@@ -40,7 +35,7 @@ async def chat(
             attachments=payload.attachments,
             model_id=payload.model_id,
         ):
-            yield _sse(event.type, event.model_dump(mode="json"))
+            yield _sse(event.type, event.model_dump(mode="json"), event.id)
 
     return StreamingResponse(
         event_stream(),
