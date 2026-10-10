@@ -116,6 +116,7 @@ export interface HealthStatus {
   airgap: boolean;
   hardware_tier: string;
   models: number;
+  models_ready?: boolean;
 }
 
 export type AgentEventType =
@@ -130,6 +131,7 @@ export type AgentEventType =
   | "error";
 
 export interface AgentEvent {
+  id?: number;
   type: AgentEventType;
   task_id: string;
   at: string;

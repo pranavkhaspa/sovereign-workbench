@@ -1,14 +1,21 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
-import type { Artifact, Document, ModelList, Task, TaskOptions } from "../api/types";
+import type { Artifact, Citation, Document, ModelList, Task, TaskOptions } from "../api/types";
 import { AgentTimeline } from "../components/AgentTimeline";
 import { ArtifactList } from "../components/ArtifactList";
+import { CitationChips } from "../components/CitationChips";
 import { Composer } from "../components/Composer";
 import { SovereigntyPanel } from "../components/SovereigntyPanel";
 import { formatDate, formatTime, titleCase } from "../lib/format";
+import { useSession } from "../store/useSession";
 import { useWorkbench } from "../store/useWorkbench";
+
+// Markdown rendering pulls in remark/rehype; keep it out of the first paint.
+const AnswerMarkdown = lazy(() =>
+  import("../components/AnswerMarkdown").then((module) => ({ default: module.AnswerMarkdown })),
+);
 
 interface Props {
   backendError?: string | null;
@@ -31,10 +38,12 @@ function AnswerPanel({
   answer,
   running,
   error,
+  citations,
 }: {
   answer: string;
   running: boolean;
   error: string | null;
+  citations: Citation[];
 }): JSX.Element {
   return (
     <section className="answer-panel">
@@ -55,10 +64,15 @@ function AnswerPanel({
         </div>
       )}
       {answer ? (
-        <div className="answer-copy">
-          {answer}
-          {running && <span className="stream-cursor" />}
-        </div>
+        <>
+          <div className="answer-copy">
+            <Suspense fallback={<span className="muted-text">Rendering answer…</span>}>
+              <AnswerMarkdown text={answer} />
+            </Suspense>
+            {running && <span className="stream-cursor" />}
+          </div>
+          <CitationChips citations={citations} />
+        </>
       ) : (
         <div className="empty-state answer-empty">
           <span className="empty-mark">✦</span>
@@ -129,7 +143,8 @@ function RecentRuns({
 
 export function WorkbenchPage({ backendError = null }: Props): JSX.Element {
   const queryClient = useQueryClient();
-  const { running, streamState, taskId, answer, timeline, error, run, reconnect, stop } =
+  const { timelineOpen, toggleTimeline } = useSession();
+  const { running, streamState, taskId, answer, timeline, citations, error, run, reconnect, stop } =
     useWorkbench();
   const models = useQuery<ModelList>({
     queryKey: ["models"],
@@ -200,6 +215,7 @@ export function WorkbenchPage({ backendError = null }: Props): JSX.Element {
         running={running}
         disabled={Boolean(backendError)}
         onDocumentsUploaded={() => void queryClient.invalidateQueries({ queryKey: ["documents"] })}
+        onStop={stop}
         onSubmit={handleSubmit}
       />
 
@@ -229,18 +245,39 @@ export function WorkbenchPage({ backendError = null }: Props): JSX.Element {
 
       <div className="workbench-columns">
         <div className="workbench-primary">
-          <AnswerPanel answer={answer} running={running} error={error} />
+          <AnswerPanel
+            answer={answer}
+            running={running}
+            error={error}
+            citations={citations}
+          />
           <section className="panel timeline-panel">
             <div className="panel-heading panel-heading-tight">
               <div>
                 <div className="section-kicker">AGENT TRACE / SSE</div>
                 <h2>Execution timeline</h2>
               </div>
-              <span className="mono muted-text">
-                {taskId ? taskId.slice(0, 12) : "NO ACTIVE TASK"}
-              </span>
+              <div className="timeline-heading-meta">
+                <span className="mono muted-text">
+                  {taskId ? taskId.slice(0, 12) : "NO ACTIVE TASK"}
+                </span>
+                <button
+                  className="button button-secondary button-small"
+                  type="button"
+                  onClick={toggleTimeline}
+                  aria-expanded={timelineOpen}
+                >
+                  {timelineOpen ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
-            <AgentTimeline entries={timeline} streamState={streamState} />
+            {timelineOpen ? (
+              <AgentTimeline entries={timeline} streamState={streamState} />
+            ) : (
+              <p className="muted-text timeline-collapsed-note">
+                Timeline hidden. Press Ctrl / ⌘ + Shift + T to bring it back.
+              </p>
+            )}
           </section>
           <section className="panel artifacts-panel">
             <div className="panel-heading panel-heading-tight">

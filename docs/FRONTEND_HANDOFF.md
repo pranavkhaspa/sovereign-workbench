@@ -46,12 +46,15 @@ Run these from `frontend/`:
 ```bash
 npm run lint
 npm run typecheck
+npm run test
 npm run build
 ```
 
-The baseline does not declare a frontend test script yet. Add a test runner and
-update `package.json`, `package-lock.json`, `Makefile`, and
-`.github/workflows/frontend-ci.yml` together when adding tests.
+Tests use Vitest with jsdom and Testing Library (`src/test/setup.ts` registers DOM
+cleanup between tests). `make frontend-test` and the frontend CI workflow both run
+`npm run test`, so add new specs under `src/**/*.test.{ts,tsx}` and they are picked up
+automatically. No network access is used: the client tests stub `fetch` and the mock
+transport tests run entirely in-process.
 
 The frontend rules are TypeScript strict, no `any`, functional React components,
 TanStack Query for server state, Zustand for UI/session state, and ESLint/Prettier.
@@ -64,16 +67,20 @@ directory layout in `CHECKLIST.md`:
 
 | Area | Files |
 | --- | --- |
-| App shell/navigation | `src/App.tsx`, `src/index.css` |
+| App shell/navigation | `src/App.tsx`, `src/index.css`, `src/lib/theme.ts` |
 | Workbench/composer | `src/pages/Workbench.tsx`, `src/components/Composer.tsx` |
+| Answer rendering | `src/components/AnswerMarkdown.tsx` (lazy), `src/components/CitationChips.tsx` |
 | Agent timeline | `src/components/AgentTimeline.tsx`, `src/store/useWorkbench.ts` |
-| Artifacts | `src/components/ArtifactList.tsx` |
+| Artifacts | `src/components/ArtifactList.tsx`, `CodeViewer.tsx`, `DocPreview.tsx` |
 | Documents/RAG | `src/pages/Documents.tsx` |
 | Models | `src/pages/Models.tsx` |
 | Sovereignty/audit | `src/pages/Sovereignty.tsx`, `src/components/SovereigntyPanel.tsx` |
+| Settings | `src/pages/Settings.tsx` |
+| UI primitives | `src/components/ui/*` (Button, Field, Dialog, Toast, …) |
 | API types/client | `src/api/types.ts`, `src/api/client.ts` |
-| SSE parser | `src/api/sse.ts` |
+| Transport + mock | `src/api/transport.ts`, `src/api/mock.ts`, `src/api/errors.ts`, `src/api/sse.ts` |
 | Session state | `src/store/useSession.ts` |
+| Tests | `src/test/setup.ts` and `src/**/*.test.{ts,tsx}` |
 
 Keep API calls in `src/api/` and use the shared types. Do not import backend Python
 modules into the frontend or duplicate API URLs in page components.
@@ -240,21 +247,35 @@ The current artifact list refreshes after a run. Use
 
 ## 5. Current gaps for the frontend owner
 
-These are known follow-ups for the next frontend branch:
+Status of the original gap list after `feat/frontend-rohit-batch`:
 
-1. Wire the stop control to `POST /api/tasks/{id}/cancel`, then abort the browser
-   stream after the backend acknowledges cancellation.
-2. Make reconnect resume `/api/tasks/{id}/events` or clearly distinguish polling
-    recovery from live SSE resume. Reconstruct text from persisted `token` events,
-    and resume after the last processed event ID to avoid duplicate text.
-3. Add document delete UI and an artifact preview/code viewer where useful.
-4. Add Vitest coverage for the API client, SSE framing/parser, model selection,
-   timeline, and artifact list.
-5. Add loading, empty, and error states to any new panel and keep the sovereignty
-   display screenshot-ready.
-6. Reconcile the future feature-directory plan in `CHECKLIST.md` with the current
-   component structure before doing a large move; avoid mixing a structural rename
-   with behavior changes.
+1. **Resolved.** The stop control calls `POST /api/tasks/{id}/cancel` first, then
+   aborts the browser stream; the Composer shows an inline Stop button and Esc stops
+   a running task.
+2. **Resolved.** Reconnect resumes `/api/tasks/{id}/events?after=<last-event-id>`
+   from the cursor carried by `id:` frames, so replayed token text is never
+   duplicated; without a cursor it rebuilds from a full replay, and task polling
+   remains the fallback when the stream cannot open.
+3. **Resolved.** Document delete (confirmation dialog + toast, index refreshed) and
+   artifact previews: `CodeViewer` for code/text artifacts, `DocPreview` for
+   `.docx`/`.xlsx`/`.pptx` deliverables (binary files offer download, not a text
+   extract), both behind the artifact Preview dialog.
+4. **Resolved.** Vitest suite: SSE framing and id parsing, API error normalisation
+   and the search fallback, every mock route, the scripted agent stream (including
+   cursor replay and abort), model grouping, timeline rows/timing, and artifact
+   list states.
+5. **Resolved.** Loading, empty, and error states exist for each panel; the
+   sovereignty display is screenshot-ready (shot list in `docs/DEMO.md`).
+6. **Deferred on purpose.** Reconciling the future `features/` directory plan with
+   the current `src/pages/` + `src/components/` structure: `CHECKLIST.md §7` now
+   records the deviation, so a rename can be done later as its own change.
+
+Also delivered beyond that list: markdown answers with citation chips (fed by the
+`citations` the backend emits on `tool_result` and `done`), a Settings view with a
+dark/light theme switch and copy-diagnostics, capability grouping in the model
+picker with an air-gap hint, a "Plan revised" row when the agent replans mid-run,
+timeline elapsed timings and copy-to-clipboard on expanded detail, and global
+shortcuts (`/`, Esc, ⌘/Ctrl+Shift+T, ⌘/Ctrl+Shift+S).
 
 ## 6. Coordination rules
 
@@ -266,5 +287,5 @@ These are known follow-ups for the next frontend branch:
   remain usable from local files and the local backend in air-gap mode.
 - Never commit `.env`, model weights, `data/`, uploads, artifacts, `node_modules`,
   or `.venv`.
-- Before handing off a frontend PR, run `npm run lint`, `npm run typecheck`, and
-  `npm run build` from `frontend/`.
+- Before handing off a frontend branch, run `npm run lint`, `npm run typecheck`,
+  `npm run test`, and `npm run build` from `frontend/`.

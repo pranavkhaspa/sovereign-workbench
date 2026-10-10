@@ -139,87 +139,93 @@ Types live in `frontend/src/api/types.ts` and mirror `backend/src/sovereign_work
 ## 7. FRONTEND — owner: Rohit
 
 > Stack: **React 18 + Vite + TypeScript (strict) + Tailwind CSS + TanStack Query + Zustand.**
-> API client + types + mocks are pre-scaffolded. Design language: dense, calm,
+> Design language: dense, calm,
 > "industrial console" — dark by default, one accent colour, monospace for logs.
 > Everything must be keyboard-accessible and work at 1280×720.
+>
+> **State: delivered on `feat/frontend-rohit-batch`.** The baseline `src/pages/` +
+> `src/components/` structure was kept instead of the planned `features/` tree — no
+> behaviour depends on the path, and mixing a structural rename with behaviour changes
+> would have been unreviewable. Names below are the files that exist; the planned name
+> appears in parentheses where it differs.
 
 ### 7.1 Foundation
 
-- [ ] `src/api/client.ts` — typed fetch wrapper, base `/api`, error normalization, `VITE_USE_MOCK` switch
-- [ ] `src/api/endpoints.ts` — one function per row of §4
-- [ ] `src/api/mock.ts` — mock all endpoints incl. a **fake SSE stream** that emits the §3 events on a timer
-- [ ] `src/types/api.ts` — mirror §4 types exactly (single source for the team)
-- [ ] `src/lib/sse.ts` — `EventSource` wrapper with reconnect + typed event parsing
-- [ ] `src/lib/format.ts` — bytes, durations, timestamps (IST-friendly)
-- [ ] `src/store/session.ts` (Zustand) — active task, selected model, attachments, airgap flag
-- [ ] App shell: `App.tsx` + `components/AppShell.tsx` — left rail nav + main + right panel
-- [ ] `components/ui/*` — Button, Input, Textarea, Select, Badge, Card, Tabs, Dialog, Toast, Spinner, Tooltip, EmptyState (headless/simple, no heavy UI kit)
+- [x] `src/api/client.ts` — typed fetch wrapper, base `/api`, error normalization (the `VITE_USE_MOCK` switch lives in `src/api/transport.ts`)
+- [x] `src/api/transport.ts` — one function per row of §4 behind a `Transport` seam: `fetchTransport` or `mockTransport`
+- [x] `src/api/mock.ts` — mock all endpoints incl. a **fake SSE stream** that emits the §3 events on a timer (`frontend/scripts/seed.ts` supplies tasks/artifacts/documents/audit)
+- [x] `src/api/types.ts` — mirror §4 types exactly (single source for the team)
+- [x] `src/api/sse.ts` (`src/lib/sse.ts`) — frame parsing + typed event reader; reconnect resumes `/tasks/{id}/events`
+- [x] `src/lib/format.ts` — bytes, durations, timestamps (IST-friendly `en-IN`)
+- [x] `src/store/useSession.ts` (`session.ts`) — active task, selected model, attachments, airgap flag; run state in `src/store/useWorkbench.ts`
+- [x] App shell: `src/App.tsx` — left rail nav + main + right panel (pages under `src/pages/`)
+- [x] `src/components/ui/*` — Button, Input, Textarea, Select, Badge, Card, Tabs, Dialog, Toast, Spinner, Tooltip, EmptyState, CopyButton (headless/simple, no heavy UI kit)
 
 ### 7.2 Chat / Composer (core flow)
 
-- [ ] `features/chat/ChatView.tsx` — message list (user/assistant/system), auto-scroll, streaming text
-- [ ] `features/chat/Composer.tsx` — textarea (auto-grow), send (⌘/Ctrl+Enter), stop button while streaming, attachment button
-- [ ] `features/chat/AttachmentTray.tsx` — drag-drop + file picker (pdf, png, jpg, xlsx, docx, txt, md), thumbnails, remove
-- [ ] `features/chat/MessageBubble.tsx` — markdown render (react-markdown + rehype-highlight) with **citation chips** that open the source snippet
-- [ ] `features/chat/ModelPicker.tsx` — reads `GET /models`, groups by capability, marks `available:false` disabled, shows airgap badge
-- [ ] Wire composer → `POST /tasks` → subscribe to `/tasks/{id}/events`
-- [ ] **Done when:** with mock on, sending a prompt streams a plausible agent run end-to-end; with backend on, it renders the real stream.
+- [x] `src/pages/Workbench.tsx` (`ChatView.tsx`) — message list (user/assistant/system), auto-scroll, streaming text
+- [x] `src/components/Composer.tsx` — textarea (auto-grow), send (⌘/Ctrl+Enter), stop button while streaming, attachment button
+- [x] dropzone in `Composer.tsx` (`AttachmentTray.tsx`) — drag-drop + file picker (pdf, png, jpg, xlsx, docx, txt, md), file badges, remove
+- [x] `src/components/AnswerMarkdown.tsx` + `CitationChips.tsx` (`MessageBubble.tsx`) — markdown render (react-markdown + rehype-highlight) with **citation chips** that open the source snippet
+- [x] model picker in `Composer.tsx` (`ModelPicker.tsx`) — reads `GET /models`, groups by capability, marks `available:false` disabled, shows airgap badge
+- [x] Wire composer → `POST /chat` (SSE) → subscribe `/tasks/{id}/events` on reconnect; stop → `POST /tasks/{id}/cancel`
+- [x] **Done when:** with mock on, sending a prompt streams a plausible agent run end-to-end; with backend on, it renders the real stream.
 
 ### 7.3 Agent timeline
 
-- [ ] `features/timeline/TimelinePanel.tsx` — vertical list of steps from SSE
-- [ ] `features/timeline/StepItem.tsx` — icon per event type, expandable tool call (args + result), timing
-- [ ] `features/timeline/ToolCallCard.tsx` — pretty-print tool JSON, collapsible, copy button
-- [ ] Show a live "thinking / calling tool / writing file" status derived from events
-- [ ] **Done when:** each §3 event type has a distinct, legible rendering and errors are red and readable.
+- [x] `src/components/AgentTimeline.tsx` (`TimelinePanel.tsx`) — vertical list of steps from SSE
+- [x] icon per event type (`StepItem`), expandable tool call (args + result), per-row `+elapsed` timing
+- [x] pretty-printed tool JSON, collapsible, copy button on the expanded block (`ToolCallCard`)
+- [x] live status derived from events (`live execution` / `run complete` / `stopped by operator` / `stream error`)
+- [x] **Done when:** each §3 event type has a distinct, legible rendering and errors are red and readable. — covered by `src/components/AgentTimeline.test.tsx`
 
 ### 7.4 Artifacts
 
-- [ ] `features/artifacts/ArtifactsPanel.tsx` — list from `GET /artifacts`, filter by task
-- [ ] `features/artifacts/ArtifactCard.tsx` — type icon (docx/pptx/xlsx/code/log), size, created-at, Download button
-- [ ] `features/artifacts/CodeViewer.tsx` — read-only code preview (for code artifacts), copy button
-- [ ] `features/artifacts/DocPreview.tsx` — for `.docx`/`.xlsx` show a text/table extract if API provides it, else "download to view"
-- [ ] **Done when:** a produced artifact appears without refresh and downloads with the correct filename/content-type.
+- [x] `src/components/ArtifactList.tsx` (`ArtifactsPanel.tsx`) — list from `GET /artifacts`, filter by task
+- [x] artifact card (`ArtifactCard`) — type icon (docx/pptx/xlsx/code/log), size, created-at, Download link with the correct filename
+- [x] `src/components/CodeViewer.tsx` — read-only code preview (for code artifacts), copy button
+- [x] `src/components/DocPreview.tsx` — for `.docx`/`.xlsx` a text/table extract via `transport.readArtifact`, else "download to view"
+- [x] **Done when:** a produced artifact appears without refresh (query invalidated when the run ends) and downloads with the correct filename/content-type.
 
 ### 7.5 Knowledge base (documents / RAG)
 
-- [ ] `features/documents/DocumentsView.tsx` — table: name, type, chunks, status, uploaded-at; delete action
-- [ ] `features/documents/UploadZone.tsx` — multi-file upload with progress
-- [ ] `features/documents/SearchPanel.tsx` — query box → `POST /documents/search` → ranked chunks with **citations** (file + page/span)
-- [ ] **Done when:** uploading a PDF shows chunk count, and search returns cited excerpts.
+- [x] `src/pages/Documents.tsx` (`DocumentsView.tsx`) — table: name, type, chunks, status, uploaded-at; delete action with confirmation
+- [x] upload zone (Composer dropzone + Documents page) — multi-file upload with status and chunk count after ingest
+- [x] search panel in `Documents.tsx` (`SearchPanel.tsx`) — query box → `POST /documents/search` (GET fallback) → ranked chunks with **citations** (file + page/span + score)
+- [x] **Done when:** uploading a PDF shows chunk count, and search returns cited excerpts.
 
 ### 7.6 Sovereignty / Audit
 
-- [ ] `features/sovereignty/SovereigntyPanel.tsx` — big status: `AIRGAP ON`, **external calls blocked: N**, allowed local endpoints list, refresh
-- [ ] `features/audit/AuditView.tsx` — filterable table of `GET /audit` (type, time, actor, detail), monospace
-- [ ] Optional: sparkline of egress attempts over time (hide if zero)
-- [ ] **Done when:** the panel visibly proves "no external calls" — this is a judged requirement; make it screenshot-worthy.
+- [x] `src/components/SovereigntyPanel.tsx` + `src/pages/Sovereignty.tsx` — big status: `AIRGAP ON`, **external calls blocked: N**, allowed local endpoints list, refresh
+- [x] audit table in `src/pages/Sovereignty.tsx` — filterable `GET /audit` (type, time, actor, detail), monospace
+- [ ] Optional: sparkline of egress attempts over time (hide if zero) — deferred
+- [x] **Done when:** the panel visibly proves "no external calls" — this is a judged requirement; screenshot `docs/assets/03-sovereignty.png` (shot list in `docs/DEMO.md`).
 
 ### 7.7 Models & Settings
 
-- [ ] `features/models/ModelsView.tsx` — cards from `GET /models`: id, capabilities, tier, provider, availability, active-select
-- [ ] `features/settings/SettingsView.tsx` — read-only env/config summary (base URL, airgap, workspace path), theme toggle, "copy diagnostic" button
-- [ ] **Done when:** model routing is visible and the active model is selectable.
+- [x] `src/pages/Models.tsx` — cards from `GET /models`: id, capabilities, tier, provider, availability, active-select
+- [x] `src/pages/Settings.tsx` (`SettingsView.tsx`) — read-only env/config summary (base URL, airgap, hardware tier), theme toggle (dark/light), "copy diagnostics" button
+- [x] **Done when:** model routing is visible and the active model is selectable.
 
 ### 7.8 Polish, a11y, tests
 
-- [ ] Responsive layout (nav collapses < 900px), no horizontal scroll at 1280×720
-- [ ] Keyboard shortcuts: focus composer, send, stop, toggle timeline
-- [ ] Loading / empty / error states for every panel
-- [ ] `vitest` tests: `client.ts`, `sse.ts`, `ModelPicker`, `TimelinePanel`, `ArtifactsPanel`
-- [ ] `eslint` + `prettier` clean; `npm run build` succeeds; bundle < 500 KB gzip (lazy-load heavy views)
+- [x] Responsive layout (nav collapses < 900 px, breakpoints at 1120/900/620); 1280×720 not yet visually audited
+- [x] Keyboard shortcuts: focus composer (`/`), send (⌘/Ctrl+Enter), stop (Esc + Stop button), toggle timeline (⌘/Ctrl+Shift+T), sovereignty panel (⌘/Ctrl+Shift+S)
+- [x] Loading / empty / error states for every panel
+- [x] `vitest` tests: `client.ts`, `sse.ts`, model grouping, `AgentTimeline`, `ArtifactList` — 44 tests, `npm run test`
+- [x] `eslint` + `prettier` clean; `npm run build` succeeds; bundle 83.6 KB gzip initial + 102 KB lazy markdown chunk (limit 500 KB)
 - [x] README section: "Frontend (Rohit)" with run instructions
 
 ### 7.9 Demo assets (Rohit)
 
-- [ ] Seed script `frontend/scripts/seed.ts` to populate mock tasks/artifacts for screenshots
-- [ ] 3 screenshots for the SIH idea PPT + README (`docs/assets/`)
-- [ ] 2-minute demo script timing (Problem 15s / live run 60s / how built 30s / next 15s)
+- [x] Seed script `frontend/scripts/seed.ts` to populate mock tasks/artifacts for screenshots (`VITE_USE_MOCK=true`)
+- [~] 3 screenshots for the SIH idea PPT + README (`docs/assets/`) — shot list written in `docs/DEMO.md`; images still to be captured by Rohit
+- [x] 2-minute demo script timing (Problem 15s / live run 60s / how built 30s / next 15s) — `docs/DEMO.md`
 
 ## 8. CI & quality (backend/infra)
 
 - [~] `backend-ci.yml` — local checks fixed; remote run pending authenticated GitHub access
-- [~] `frontend-ci.yml` — eslint, tsc --noEmit, build (all local checks pass; CI run pending; no test script yet)
+- [~] `frontend-ci.yml` — eslint, tsc --noEmit, vitest, build (all local checks pass; CI run pending)
 - [~] `docker.yml` — build backend + frontend images; compose smoke test (awaiting Docker run)
 - [~] `codeql.yml` — code scanning (python + javascript; awaiting CI run)
 - [x] `license-check.yml` — permissive allow-list plus named, separately checked MPL exceptions

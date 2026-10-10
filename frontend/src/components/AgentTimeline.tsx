@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { formatTime } from "../lib/format";
+import { formatDuration, formatTime } from "../lib/format";
 import type { StreamState, TimelineEntry } from "../store/useWorkbench";
+import { CopyButton } from "./ui";
 
 const EVENT_META: Record<string, { icon: string; label: string; tone: string }> = {
   task_created: { icon: "＋", label: "accepted", tone: "timeline-accent" },
@@ -55,6 +56,8 @@ export function AgentTimeline({
 }): JSX.Element {
   const [expanded, setExpanded] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const first = entries[0];
+  const startedAt = first ? new Date(first.at).getTime() : Number.NaN;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -84,6 +87,8 @@ export function AgentTimeline({
             const detail = detailFor(entry);
             const isExpanded = expanded === entry.id;
             const expandable = Boolean(detail);
+            const entryMs = new Date(entry.at).getTime();
+            const elapsed = Number.isFinite(startedAt) ? Math.max(0, entryMs - startedAt) : null;
             return (
               <li className={`timeline-entry ${meta.tone}`} key={entry.id}>
                 <span className="timeline-line" aria-hidden="true" />
@@ -93,7 +98,10 @@ export function AgentTimeline({
                 <div className="timeline-entry-body">
                   <div className="timeline-entry-head">
                     <span className="timeline-event-label">{meta.label}</span>
-                    <time>{formatTime(entry.at)}</time>
+                    <span className="timeline-entry-elapsed">
+                      <time>{formatTime(entry.at)}</time>
+                      {elapsed !== null && <em>+{formatDuration(elapsed)}</em>}
+                    </span>
                   </div>
                   <div className="timeline-entry-title">{entry.label}</div>
                   {detail && (
@@ -116,7 +124,12 @@ export function AgentTimeline({
                       </span>
                     </button>
                   )}
-                  {isExpanded && detail && <pre className="timeline-detail-expanded">{detail}</pre>}
+                  {isExpanded && detail && (
+                    <div className="timeline-detail-block">
+                      <pre className="timeline-detail-expanded">{detail}</pre>
+                      <CopyButton value={detail} label="Copy" />
+                    </div>
+                  )}
                 </div>
               </li>
             );

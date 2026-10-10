@@ -1,8 +1,14 @@
 import { create } from "zustand";
 
-import { api } from "../api/client";
-import { streamTask } from "../api/sse";
-import type { AgentEvent, AgentEventType, Task, TaskCreate, TaskStep } from "../api/types";
+import { api, streamTask, streamTaskEvents } from "../api/client";
+import type {
+  AgentEvent,
+  AgentEventType,
+  Citation,
+  Task,
+  TaskCreate,
+  TaskStep,
+} from "../api/types";
 
 export type StreamState =
   "idle" | "connecting" | "streaming" | "complete" | "stopped" | "error" | "disconnected";
@@ -23,6 +29,7 @@ interface WorkbenchState {
   taskId: string | null;
   answer: string;
   timeline: TimelineEntry[];
+  citations: Citation[];
   error: string | null;
   run: (payload: TaskCreate) => Promise<void>;
   reconnect: () => Promise<void>;
@@ -32,6 +39,7 @@ interface WorkbenchState {
 
 let counter = 0;
 let activeController: AbortController | null = null;
+let lastEventId = 0;
 
 const nextId = () => `entry-${Date.now()}-${counter++}`;
 
@@ -137,10 +145,11 @@ function addEntry(event: AgentEvent): TimelineEntry {
         }
         return "Untitled step";
       });
+      const revised = data.replanned === true;
       return {
         id: nextId(),
         type: event.type,
-        label: `Plan ready · ${steps.length} ${steps.length === 1 ? "step" : "steps"}`,
+        label: `${revised ? "Plan revised" : "Plan ready"} · ${steps.length} ${steps.length === 1 ? "step" : "steps"}`,
         detail: titles.join("  →  "),
         data,
         at: event.at,
@@ -213,28 +222,55 @@ function addEntry(event: AgentEvent): TimelineEntry {
   }
 }
 
+function citationKey(citation: Citation): string {
+  return `${citation.document_id}:${citation.page ?? "-"}:${citation.span ?? "-"}`;
+}
+
+function mergeCitations(current: Citation[], data: Record<string, unknown>): Citation[] {
+  const raw = data.citations;
+  if (!Array.isArray(raw) || raw.length === 0) return current;
+  const merged = [...current];
+  const seen = new Set(merged.map(citationKey));
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const citation = item as Citation;
+    if (typeof citation.document_id !== "string" || typeof citation.filename !== "string") continue;
+    const key = citationKey(citation);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(citation);
+  }
+  return merged;
+}
+
 export const useWorkbench = create<WorkbenchState>((set, get) => ({
   running: false,
   streamState: "idle",
   taskId: null,
   answer: "",
   timeline: [],
+  citations: [],
   error: null,
 
-  reset: () =>
+  reset: () => {
+    lastEventId = 0;
     set({
       running: false,
       streamState: "idle",
       taskId: null,
       answer: "",
       timeline: [],
+      citations: [],
       error: null,
-    }),
+    });
+  },
 
   stop: () => {
+    const taskId = get().taskId;
     activeController?.abort();
     activeController = null;
     set({ running: false, streamState: "stopped", error: null });
+    if (taskId) void api.cancelTask(taskId).catch(() => undefined);
   },
 
   reconnect: async () => {
@@ -244,6 +280,56 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const controller = new AbortController();
     activeController = controller;
     set({ running: true, streamState: "connecting", error: null });
+
+    // Resume the persisted event stream from the cursor so replayed token text
+    // never duplicates what is already on screen. Without a cursor (fresh page)
+    // the whole history is rebuilt from a full replay.
+    const resume = lastEventId > 0;
+    let terminal = false;
+    let replayed = 0;
+    let timeline: TimelineEntry[] = resume ? get().timeline : [];
+    let answer = resume ? get().answer : "";
+    if (!resume) set({ answer: "", timeline: [] });
+    const handle = (event: AgentEvent): void => {
+      if (activeController !== controller) return;
+      replayed += 1;
+      if (typeof event.id === "number" && event.id > lastEventId) {
+        lastEventId = event.id;
+      }
+      if (event.type === "task_created") {
+        set({ taskId: asString(event.data.task_id, event.task_id), streamState: "streaming" });
+      }
+      if (event.type === "token") {
+        answer += asString(event.data.text);
+        set({ answer });
+        return;
+      }
+      timeline = [...timeline, addEntry(event)];
+      set({ timeline, citations: mergeCitations(get().citations, event.data) });
+      if (event.type === "done") {
+        terminal = true;
+        set({ running: false, streamState: "complete" });
+      }
+      if (event.type === "error") {
+        terminal = true;
+        set({
+          running: false,
+          streamState: "error",
+          error: asString(event.data.message, "The agent reported an error."),
+        });
+      }
+    };
+
+    try {
+      await streamTaskEvents(taskId, handle, controller.signal, resume ? lastEventId : undefined);
+    } catch {
+      // Fall through to the step-polling fallback below.
+    }
+    if (activeController !== controller) return;
+    if (replayed > 0 && terminal) {
+      activeController = null;
+      return;
+    }
 
     try {
       let task: Task | null = null;
@@ -298,23 +384,31 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     activeController?.abort();
     const controller = new AbortController();
     activeController = controller;
+    lastEventId = 0;
     set({
       running: true,
       streamState: "connecting",
       taskId: null,
       answer: "",
       timeline: [],
+      citations: [],
       error: null,
     });
 
     let terminal = false;
     const handle = (event: AgentEvent) => {
       if (activeController !== controller) return;
+      if (typeof event.id === "number" && event.id > lastEventId) {
+        lastEventId = event.id;
+      }
       if (event.type === "task_created") {
         set({ taskId: asString(event.data.task_id, event.task_id), streamState: "streaming" });
       }
       if (event.type !== "token") {
         set((state) => ({ timeline: [...state.timeline, addEntry(event)] }));
+      }
+      if (event.type === "tool_result" || event.type === "done") {
+        set((state) => ({ citations: mergeCitations(state.citations, event.data) }));
       }
       if (event.type === "token") {
         set((state) => ({ answer: state.answer + asString(event.data.text) }));

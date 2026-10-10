@@ -11,6 +11,7 @@ interface Props {
   running: boolean;
   disabled?: boolean;
   onDocumentsUploaded?: () => void;
+  onStop?: () => void;
   onSubmit: (
     prompt: string,
     modelId: string | null,
@@ -21,12 +22,53 @@ interface Props {
 
 const ALLOWED_FILES = ".pdf,.png,.jpg,.jpeg,.xlsx,.xlsm,.docx,.txt,.md,.csv";
 
+interface ModelGroup {
+  key: string;
+  label: string;
+  models: ModelInfo[];
+}
+
+const MODEL_GROUPS: { key: string; label: string; test: (model: ModelInfo) => boolean }[] = [
+  { key: "code", label: "Code", test: (model) => !model.remote && model.capabilities.includes("code") },
+  {
+    key: "vision",
+    label: "Vision / multimodal",
+    test: (model) => !model.remote && model.capabilities.includes("vision"),
+  },
+  {
+    key: "embed",
+    label: "Embeddings",
+    test: (model) => !model.remote && model.capabilities.includes("embed"),
+  },
+  {
+    key: "general",
+    label: "General / reasoning",
+    test: (model) =>
+      !model.remote &&
+      (model.capabilities.includes("chat") || model.capabilities.includes("plan")),
+  },
+  { key: "remote", label: "Remote providers", test: (model) => model.remote },
+];
+
+function groupModels(models: ModelInfo[]): ModelGroup[] {
+  const groups: ModelGroup[] = MODEL_GROUPS.map((group) => ({
+    key: group.key,
+    label: group.label,
+    models: models.filter(group.test),
+  })).filter((group) => group.models.length > 0);
+  const assigned = new Set(groups.flatMap((group) => group.models.map((model) => model.id)));
+  const others = models.filter((model) => !assigned.has(model.id));
+  if (others.length > 0) groups.push({ key: "other", label: "Other", models: others });
+  return groups;
+}
+
 export function Composer({
   models,
   documents,
   running,
   disabled = false,
   onDocumentsUploaded,
+  onStop,
   onSubmit,
 }: Props): JSX.Element {
   const [prompt, setPrompt] = useState(
@@ -125,6 +167,7 @@ export function Composer({
 
       <textarea
         ref={textAreaRef}
+        id="task-prompt"
         className="prompt-input"
         value={prompt}
         rows={3}
@@ -132,7 +175,8 @@ export function Composer({
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
-            submit();
+            if (running) onStop?.();
+            else submit();
           }
         }}
         placeholder="Example: compare the inspection findings with the maintenance SOP and draft an approval note..."
@@ -217,12 +261,25 @@ export function Composer({
             disabled={disabled}
           >
             <option value="">AUTO · ROUTER DECIDES</option>
-            {models.map((model) => (
-              <option key={model.id} value={model.id} disabled={!model.available || model.remote}>
-                {model.label} · {model.available ? model.tier.toUpperCase() : "OFFLINE"}
-              </option>
+            {groupModels(models).map((group) => (
+              <optgroup key={group.key} label={group.label.toUpperCase()}>
+                {group.models.map((model) => (
+                  <option key={model.id} value={model.id} disabled={!model.available || model.remote}>
+                    {model.label} ·{" "}
+                    {model.remote
+                      ? "BLOCKED BY AIR-GAP"
+                      : model.available
+                        ? model.tier.toUpperCase()
+                        : "OFFLINE"}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
+          <span className={`field-hint ${airgap ? "" : "field-hint-warn"}`}>
+            <span className="status-dot" />
+            {airgap ? "air-gap on · remote providers disabled" : "air-gap off · network reachable"}
+          </span>
         </label>
         <label className="field-label" htmlFor="document-select">
           ADD INDEXED SOURCE
@@ -286,22 +343,20 @@ export function Composer({
           </label>
           <span className="muted-text">Ctrl / ⌘ + Enter to run</span>
         </div>
-        <button
-          className="button button-primary run-button"
-          type="button"
-          onClick={submit}
-          disabled={running || disabled || !prompt.trim() || uploading}
-        >
-          {running ? (
-            <>
-              <span className="button-spinner" /> Executing
-            </>
-          ) : (
-            <>
-              Run task <span>→</span>
-            </>
-          )}
-        </button>
+        {running ? (
+          <button className="button button-danger run-button" type="button" onClick={onStop}>
+            <span className="stop-glyph" aria-hidden="true" /> Stop run
+          </button>
+        ) : (
+          <button
+            className="button button-primary run-button"
+            type="button"
+            onClick={submit}
+            disabled={disabled || !prompt.trim() || uploading}
+          >
+            Run task <span>→</span>
+          </button>
+        )}
       </div>
       {uploadError && <p className="inline-error">{uploadError}</p>}
     </section>

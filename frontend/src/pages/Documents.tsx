@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, uploadDocument } from "../api/client";
 import type { Chunk, Document } from "../api/types";
+import { Button, Dialog, useToast } from "../components/ui";
 import { formatBytes, formatDate } from "../lib/format";
 
 const ACCEPTED = ".pdf,.png,.jpg,.jpeg,.xlsx,.xlsm,.docx,.txt,.md,.csv,.log,.json";
@@ -18,14 +19,25 @@ function DocumentIcon({ filename }: { filename: string }): JSX.Element {
 
 export function DocumentsPage(): JSX.Element {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const documents = useQuery<Document[]>({ queryKey: ["documents"], queryFn: api.documents });
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ completed: 0, total: 0 });
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [query, setQuery] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
   const search = useMutation<Chunk[], Error, string>({
     mutationFn: (value) => api.documentSearch(value, 8),
+  });
+  const remove = useMutation<void, Error, string>({
+    mutationFn: (id) => api.deleteDocument(id).then(() => undefined),
+    onSuccess: async () => {
+      setPendingDelete(null);
+      toast("Document removed from the local index", "ok");
+      await queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error) => toast(error.message, "danger"),
   });
 
   const handleFiles = async (fileList: FileList | File[]) => {
@@ -238,6 +250,9 @@ export function DocumentsPage(): JSX.Element {
                   <th>Size</th>
                   <th>Indexed</th>
                   <th>Status</th>
+                  <th>
+                    <span className="visually-hidden">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -258,6 +273,11 @@ export function DocumentsPage(): JSX.Element {
                         {document.status}
                       </span>
                     </td>
+                    <td>
+                      <Button size="sm" variant="ghost" onClick={() => setPendingDelete(document)}>
+                        Delete
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -273,6 +293,32 @@ export function DocumentsPage(): JSX.Element {
           </div>
         )}
       </section>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title="Remove document from the index?"
+        description="Its chunks and embeddings are deleted from this machine. This cannot be undone."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => pendingDelete && remove.mutate(pendingDelete.id)}
+            >
+              Remove document
+            </Button>
+          </>
+        }
+      >
+        <p className="mono text-xs text-slate-200">{pendingDelete?.filename}</p>
+        <p className="mt-2 text-xs text-slate-400">
+          {pendingDelete ? `${pendingDelete.chunk_count} indexed chunks will be discarded.` : ""}
+        </p>
+      </Dialog>
     </div>
   );
 }

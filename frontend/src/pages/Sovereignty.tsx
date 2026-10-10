@@ -20,7 +20,7 @@ export function SovereigntyPage(): JSX.Element {
   });
   const audit = useQuery<AuditEvent[]>({
     queryKey: ["audit"],
-    queryFn: api.audit,
+    queryFn: () => api.audit(),
     refetchInterval: 5000,
   });
 
