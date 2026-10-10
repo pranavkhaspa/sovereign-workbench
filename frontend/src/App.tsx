@@ -9,6 +9,7 @@ import { SettingsPage } from "./pages/Settings";
 import { SovereigntyPage } from "./pages/Sovereignty";
 import { WorkbenchPage } from "./pages/Workbench";
 import { useSession } from "./store/useSession";
+import { useWorkbench } from "./store/useWorkbench";
 
 type Tab = "workbench" | "documents" | "models" | "sovereignty" | "settings";
 
@@ -52,10 +53,47 @@ export default function App(): JSX.Element {
     refetchInterval: 15000,
   });
   const setAirgap = useSession((state) => state.setAirgap);
+  const toggleTimeline = useSession((state) => state.toggleTimeline);
 
   useEffect(() => {
     if (health.data) setAirgap(health.data.airgap);
   }, [health.data, setAirgap]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const target = event.target;
+      const typing =
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      const command = event.metaKey || event.ctrlKey;
+
+      if (event.key === "/" && !typing) {
+        event.preventDefault();
+        setTab("workbench");
+        window.setTimeout(() => document.getElementById("task-prompt")?.focus(), 0);
+        return;
+      }
+      if (event.key === "Escape" && !typing && !document.querySelector('[role="dialog"]')) {
+        const workbench = useWorkbench.getState();
+        if (workbench.running) workbench.stop();
+        return;
+      }
+      if (command && event.shiftKey && (event.key === "T" || event.key === "t")) {
+        event.preventDefault();
+        setTab("workbench");
+        toggleTimeline();
+        return;
+      }
+      if (command && event.shiftKey && (event.key === "S" || event.key === "s")) {
+        event.preventDefault();
+        setTab("sovereignty");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [setTab, toggleTimeline]);
 
   return (
     <div className="app-frame">

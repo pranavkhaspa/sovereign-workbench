@@ -11,17 +11,21 @@ interface SessionState {
   selectedModelId: string | null;
   attachments: AttachmentRef[];
   airgap: boolean;
+  timelineOpen: boolean;
   setSelectedModelId: (modelId: string | null) => void;
   setAttachments: (attachments: AttachmentRef[]) => void;
   addAttachment: (attachment: AttachmentRef) => void;
   removeAttachment: (id: string) => void;
   setAirgap: (airgap: boolean) => void;
+  setTimelineOpen: (open: boolean) => void;
+  toggleTimeline: () => void;
 }
 
 export const useSession = create<SessionState>((set) => ({
   selectedModelId: null,
   attachments: [],
   airgap: true,
+  timelineOpen: true,
   setSelectedModelId: (selectedModelId) => set({ selectedModelId }),
   setAttachments: (attachments) => set({ attachments }),
   addAttachment: (attachment) =>
@@ -33,4 +37,6 @@ export const useSession = create<SessionState>((set) => ({
   removeAttachment: (id) =>
     set((state) => ({ attachments: state.attachments.filter((item) => item.id !== id) })),
   setAirgap: (airgap) => set({ airgap }),
+  setTimelineOpen: (timelineOpen) => set({ timelineOpen }),
+  toggleTimeline: () => set((state) => ({ timelineOpen: !state.timelineOpen })),
 }));

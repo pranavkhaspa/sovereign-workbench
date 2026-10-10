@@ -2442,3 +2442,46 @@ pre {
   color: var(--muted);
   text-align: right;
 }
+
+/* --- composer + timeline extras -------------------------------------- */
+
+.field-hint {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+.field-hint-warn {
+  color: var(--orange);
+}
+.timeline-heading-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.timeline-collapsed-note {
+  padding: 10px 0 4px;
+  font-size: 12px;
+}
+.timeline-entry-elapsed {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+.timeline-entry-elapsed em {
+  color: var(--cyan);
+  font-style: normal;
+}
+.timeline-detail-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  margin-top: 6px;
+}

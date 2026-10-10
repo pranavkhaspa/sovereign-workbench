@@ -9,6 +9,7 @@ import { CitationChips } from "../components/CitationChips";
 import { Composer } from "../components/Composer";
 import { SovereigntyPanel } from "../components/SovereigntyPanel";
 import { formatDate, formatTime, titleCase } from "../lib/format";
+import { useSession } from "../store/useSession";
 import { useWorkbench } from "../store/useWorkbench";
 
 // Markdown rendering pulls in remark/rehype; keep it out of the first paint.
@@ -142,6 +143,7 @@ function RecentRuns({
 
 export function WorkbenchPage({ backendError = null }: Props): JSX.Element {
   const queryClient = useQueryClient();
+  const { timelineOpen, toggleTimeline } = useSession();
   const { running, streamState, taskId, answer, timeline, citations, error, run, reconnect, stop } =
     useWorkbench();
   const models = useQuery<ModelList>({
@@ -255,11 +257,27 @@ export function WorkbenchPage({ backendError = null }: Props): JSX.Element {
                 <div className="section-kicker">AGENT TRACE / SSE</div>
                 <h2>Execution timeline</h2>
               </div>
-              <span className="mono muted-text">
-                {taskId ? taskId.slice(0, 12) : "NO ACTIVE TASK"}
-              </span>
+              <div className="timeline-heading-meta">
+                <span className="mono muted-text">
+                  {taskId ? taskId.slice(0, 12) : "NO ACTIVE TASK"}
+                </span>
+                <button
+                  className="button button-secondary button-small"
+                  type="button"
+                  onClick={toggleTimeline}
+                  aria-expanded={timelineOpen}
+                >
+                  {timelineOpen ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
-            <AgentTimeline entries={timeline} streamState={streamState} />
+            {timelineOpen ? (
+              <AgentTimeline entries={timeline} streamState={streamState} />
+            ) : (
+              <p className="muted-text timeline-collapsed-note">
+                Timeline hidden. Press Ctrl / ⌘ + Shift + T to bring it back.
+              </p>
+            )}
           </section>
           <section className="panel artifacts-panel">
             <div className="panel-heading panel-heading-tight">
