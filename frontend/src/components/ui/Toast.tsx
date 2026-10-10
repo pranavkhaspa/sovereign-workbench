@@ -21,9 +21,9 @@ type PushToast = (message: string, tone?: ToastTone) => void;
 const ToastContext = createContext<PushToast | null>(null);
 
 const TONES: Record<ToastTone, string> = {
-  info: "border-white/15 text-slate-100",
-  ok: "border-ok/60 text-ok",
-  danger: "border-danger/60 text-danger",
+  info: "border-line text-fg",
+  ok: "border-ok text-ok",
+  danger: "border-danger text-danger",
 };
 
 export function ToastProvider({ children }: { children: ReactNode }): JSX.Element {

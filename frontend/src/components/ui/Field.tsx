@@ -1,23 +1,23 @@
 import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 const FIELD =
-  "w-full rounded border border-white/15 bg-ink/70 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-accent/70 focus:outline-none focus:ring-1 focus:ring-accent/50 disabled:opacity-50";
+  "w-full rounded border border-line bg-ink px-2.5 py-1.5 text-xs text-fg placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50";
 
-const LABEL = "mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500";
+const LABEL = "mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-muted";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
 }
 
 export function Input({ label, id, className = "", ...rest }: InputProps): JSX.Element {
-  const input = <input {...rest} id={id} className={`${FIELD} ${className}`} />;
+  const field = <input {...rest} id={id} className={`${FIELD} ${className}`} />;
   return label ? (
     <label htmlFor={id} className="block">
       <span className={LABEL}>{label}</span>
-      {input}
+      {field}
     </label>
   ) : (
-    input
+    field
   );
 }
 
@@ -25,8 +25,15 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   label?: string;
 }
 
-export function Textarea({ label, id, className = "", ...rest }: TextareaProps): JSX.Element {
-  const field = <textarea {...rest} id={id} className={`${FIELD} font-mono leading-relaxed ${className}`} />;
+export function Textarea({
+  label,
+  id,
+  className = "",
+  ...rest
+}: TextareaProps): JSX.Element {
+  const field = (
+    <textarea {...rest} id={id} className={`${FIELD} font-mono leading-relaxed ${className}`} />
+  );
   return label ? (
     <label htmlFor={id} className="block">
       <span className={LABEL}>{label}</span>

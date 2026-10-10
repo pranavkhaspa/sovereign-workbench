@@ -53,15 +53,15 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className="relative flex max-h-[80vh] w-full max-w-xl flex-col rounded-md border border-white/15 bg-panel shadow-2xl focus:outline-none"
+        className="relative flex max-h-[80vh] w-full max-w-xl flex-col rounded-md border border-line bg-panel text-fg shadow-2xl focus:outline-none"
       >
-        <header className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-3">
+        <header className="flex items-start justify-between gap-4 border-b border-line-soft px-4 py-3">
           <div>
-            <h2 id={titleId} className="text-sm font-semibold text-slate-100">
+            <h2 id={titleId} className="text-sm font-semibold text-fg">
               {title}
             </h2>
             {description && (
-              <p id={descriptionId} className="mt-0.5 text-xs text-slate-400">
+              <p id={descriptionId} className="mt-0.5 text-xs text-muted">
                 {description}
               </p>
             )}
@@ -70,14 +70,14 @@ export function Dialog({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded px-2 text-lg leading-none text-slate-400 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+            className="rounded px-2 text-lg leading-none text-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             ×
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto px-4 py-3">{children}</div>
         {footer && (
-          <footer className="flex justify-end gap-2 border-t border-white/10 px-4 py-3">
+          <footer className="flex justify-end gap-2 border-t border-line-soft px-4 py-3">
             {footer}
           </footer>
         )}

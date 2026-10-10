@@ -8,11 +8,11 @@ export interface BadgeProps {
 }
 
 const TONES: Record<Tone, string> = {
-  neutral: "border-white/15 bg-white/5 text-slate-300",
-  accent: "border-accent/50 bg-accent/10 text-accent",
-  ok: "border-ok/50 bg-ok/10 text-ok",
-  warn: "border-warn/50 bg-warn/10 text-warn",
-  danger: "border-danger/50 bg-danger/10 text-danger",
+  neutral: "border-line text-muted",
+  accent: "border-accent text-accent bg-[var(--cyan-a12)]",
+  ok: "border-ok text-ok bg-[var(--green-a12)]",
+  warn: "border-warn text-warn bg-[var(--orange-a12)]",
+  danger: "border-danger text-danger bg-[var(--red-a12)]",
 };
 
 export function Badge({ tone = "neutral", children }: BadgeProps): JSX.Element {

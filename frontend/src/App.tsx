@@ -5,17 +5,19 @@ import { api } from "./api/client";
 import type { HealthStatus } from "./api/types";
 import { DocumentsPage } from "./pages/Documents";
 import { ModelsPage } from "./pages/Models";
+import { SettingsPage } from "./pages/Settings";
 import { SovereigntyPage } from "./pages/Sovereignty";
 import { WorkbenchPage } from "./pages/Workbench";
 import { useSession } from "./store/useSession";
 
-type Tab = "workbench" | "documents" | "models" | "sovereignty";
+type Tab = "workbench" | "documents" | "models" | "sovereignty" | "settings";
 
 const TABS: { id: Tab; label: string; short: string }[] = [
   { id: "workbench", label: "Workbench", short: "RUN" },
   { id: "documents", label: "Knowledge base", short: "DOCS" },
   { id: "models", label: "Model registry", short: "MODELS" },
   { id: "sovereignty", label: "Sovereignty", short: "AUDIT" },
+  { id: "settings", label: "Settings", short: "CFG" },
 ];
 
 function queryError(error: unknown): string | null {
@@ -136,6 +138,7 @@ export default function App(): JSX.Element {
           {tab === "documents" && <DocumentsPage />}
           {tab === "models" && <ModelsPage />}
           {tab === "sovereignty" && <SovereigntyPage />}
+          {tab === "settings" && <SettingsPage />}
         </main>
       </div>
       <footer className="app-footer">
