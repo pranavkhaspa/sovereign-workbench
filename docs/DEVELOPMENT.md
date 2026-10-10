@@ -53,13 +53,13 @@ data.
 | `make frontend-lint` | The frontend's declared `lint` and `typecheck` scripts |
 | `make frontend-build` | The frontend's declared `build` script |
 | `make lint` | Backend and frontend checks above |
-| `make test` | Backend tests and a no-op frontend test check until a test script exists |
+| `make test` | Backend pytest and the frontend Vitest suite |
 | `make build` | Frontend build followed by `docker compose build` |
 | `make verify-airgap` | Stable API checks plus established socket inspection |
 
 The frontend has a committed `package-lock.json`, so bootstrap, CI, and the frontend
-image use `npm ci`. There is no frontend test script yet; when adding one, update the
-package manifest, lockfile, `Makefile`, and workflow together.
+image use `npm ci`. Its test script is `npm run test` (Vitest with jsdom); the
+`frontend-test` Make target runs it and the CI workflow picks up the same script.
 
 ## Stable API coordination
 

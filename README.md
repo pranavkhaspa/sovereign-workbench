@@ -129,7 +129,7 @@ variables when necessary.
 
 ```bash
 make lint             # backend Ruff/Black/mypy + frontend lint/typecheck
-make test             # pytest; frontend tests are skipped until a test script exists
+make test             # backend pytest + frontend vitest
 make build            # frontend build + Docker Compose images
 make compose-config   # validate CPU and GPU Compose syntax
 make verify-airgap    # API health/egress + established socket check
@@ -139,19 +139,24 @@ make verify-airgap    # API health/egress + established socket check
 - Frontend: Node 20+ (React 18, Vite, TypeScript strict, Tailwind)
 - Runtime: Ollama (default) / llama.cpp / any OpenAI-compatible endpoint
 
-The frontend package declares `dev`, `build`, `lint`, `format`, and `typecheck`, and
-ships a lockfile for reproducible installs. It does not have a test script yet; add a
-test runner and update the setup/CI targets together when the frontend test suite lands.
-CI keeps `AIRGAP=true` for backend tests and never pulls model weights.
+The frontend package declares `dev`, `build`, `lint`, `format`, `typecheck`, and
+`test` (Vitest + jsdom + Testing Library) and ships a lockfile for reproducible
+installs. CI keeps `AIRGAP=true` for backend tests and never pulls model weights.
 
 ### Frontend (Rohit)
 
 After `./scripts/bootstrap.sh`, use `make frontend` (or `npm run dev` in `frontend/`)
 to start Vite on `http://127.0.0.1:5173`. The Vite proxy forwards `/api` to the backend
 on `127.0.0.1:8000`; use `make backend` in a second terminal if running the services
-separately. Run `make frontend-lint` and `make frontend-build` for checks. The frontend
-owner and backend/infra owner coordinate through
+separately. Run `make frontend-lint`, `make frontend-test`, and `make frontend-build`
+for checks. The frontend owner and backend/infra owner coordinate through
 [`docs/FRONTEND_HANDOFF.md`](docs/FRONTEND_HANDOFF.md).
+
+To use the UI **without a backend** (screenshots, review on a machine with no
+models), set `VITE_USE_MOCK=true` in `frontend/.env.local`; the client then answers
+every route from `frontend/scripts/seed.ts`, including a scripted agent stream.
+The two-minute demo script and screenshot shot list are in
+[`docs/DEMO.md`](docs/DEMO.md).
 
 ## Stable local API
 
