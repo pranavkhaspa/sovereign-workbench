@@ -39,7 +39,16 @@ jobs:
       - name: Check Python licences
         run: >-
           .venv/bin/pip-licenses
-          --allow-only="MIT;MIT License;MIT-CMU;Apache-2.0;Apache Software License;Apache Software License; MIT License;BSD License;BSD-2-Clause;BSD-3-Clause;Apache-2.0 OR BSD-2-Clause;ISC;PSF-2.0;0BSD;Unlicense"
+          --ignore-packages certifi pathspec
+          --allow-only="MIT;MIT License;MIT-CMU;Apache-2.0;Apache Software License;BSD License;BSD-2-Clause;BSD-3-Clause;Apache-2.0 OR BSD-2-Clause;ISC;PSF-2.0;0BSD;Unlicense"
+      - name: Check documented file-scoped licence exceptions
+        run: >-
+          .venv/bin/pip-licenses --packages certifi pathspec
+          --allow-only="Mozilla Public License 2.0 (MPL 2.0);MPL-2.0"
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --no-audit --no-fund

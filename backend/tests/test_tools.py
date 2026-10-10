@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import pytest
-
+from sovereign_workbench.config import get_settings
 from sovereign_workbench.core.agent.tools.base import ToolContext
 from sovereign_workbench.core.agent.tools.fs_tools import (
     ListFilesArgs,
@@ -14,7 +13,6 @@ from sovereign_workbench.core.agent.tools.fs_tools import (
     WriteFileArgs,
     WriteFileTool,
 )
-from sovereign_workbench.config import get_settings
 
 
 def _ctx(tmp_path: Path) -> ToolContext:

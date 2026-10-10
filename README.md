@@ -88,8 +88,9 @@ complete it before the machine is disconnected.
 `backend/pyproject.toml` and installs the frontend with `npm ci`. If dependencies are
 already cached, use `./scripts/bootstrap.sh --offline`; it never contacts package
 indexes in that mode.
-The default backend extras include `dev,ocr`; install the host `tesseract` binary for
-image OCR when running without Docker (the Compose backend image includes it).
+The default backend extras include `dev,ocr`; install host `tesseract-ocr` and
+`poppler-utils` for image/scanned-PDF OCR when running without Docker (the backend
+image includes both). On Debian/Ubuntu: `sudo apt-get install tesseract-ocr poppler-utils`.
 
 `pull-models.sh` reads only non-remote `ollama` entries from `models/models.toml`. It
 uses a host Ollama installation when available. Without one, it starts the Compose
@@ -144,6 +145,27 @@ ships a lockfile for reproducible installs. It does not have a test script yet; 
 test runner and update the setup/CI targets together when the frontend test suite lands.
 CI keeps `AIRGAP=true` for backend tests and never pulls model weights.
 
+### Backend verification
+
+```bash
+make backend-lint
+make backend-test
+# From backend/, enforce the same core coverage threshold as CI:
+../.venv/bin/pytest --cov=sovereign_workbench.core --cov-fail-under=70
+```
+
+The suite exercises real scanned-PDF OCR → DOCX, office-file downloads, computed
+spreadsheet cells, code execution/output limits, model protocol/routing, document
+citations, and durable task reconnect/cancellation. OCR integration requires the
+host binaries above. Model responses are mocked in tests and network connections
+are denied. Actual model quality and performance on the i3/8 GB machine require a
+deployment run; see [`docs/BACKEND_STATUS.md`](docs/BACKEND_STATUS.md).
+
+For stronger code isolation, pre-pull `python:3.12-slim` on a Docker-enabled host
+and set `SANDBOX_BACKEND=docker`. The default `auto` uses it when available and
+otherwise selects the documented best-effort subprocess driver. Docker task runs
+never pull images or enable networking.
+
 ### Frontend (Rohit)
 
 After `./scripts/bootstrap.sh`, use `make frontend` (or `npm run dev` in `frontend/`)
@@ -172,3 +194,6 @@ Read [`CONTEXT.md`](CONTEXT.md) before contributing, then pick a task from
 ## Licence
 
 Apache-2.0 © the Sovereign Workbench contributors. See [`LICENSE`](LICENSE).
+Third-party runtime licences include the named certifi/pathspec MPL exceptions
+and separately installed OCR programs described in
+[`ADR 0002`](docs/adr/0002-backend-runtime-and-recovery.md).

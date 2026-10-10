@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     tool_timeout_seconds: int = Field(default=120, ge=1)
     sandbox_memory_mb: int = Field(default=1024, ge=128)
     sandbox_cpus: float = Field(default=1.0, gt=0)
+    sandbox_backend: Literal["auto", "docker", "subprocess"] = "auto"
+    sandbox_docker_image: str = "python:3.12-slim"
 
     def ensure_dirs(self) -> None:
         """Create storage directories. Called at startup."""

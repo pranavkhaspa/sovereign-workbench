@@ -25,7 +25,7 @@ _MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 @router.post("/documents", response_model=DocumentUploadResult, status_code=201)
-async def upload_document(file: UploadFile = File(...)) -> DocumentUploadResult:
+def upload_document(file: UploadFile = File(...)) -> DocumentUploadResult:
     settings = get_settings()
     settings.ensure_dirs()
     filename = Path(file.filename or "upload.bin").name
@@ -54,9 +54,7 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadResult:
         raise HTTPException(status_code=415, detail="unsupported document type")
     safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", Path(filename).stem).strip("._") or "upload"
     safe_filename = f"{safe_stem}{Path(filename).suffix.lower()}"
-    destination = settings.uploads_dir / safe_filename
-    if destination.exists():
-        destination = settings.uploads_dir / f"{uuid4().hex}-{safe_filename}"
+    destination = settings.uploads_dir / f"{uuid4().hex}-{safe_filename}"
     size = 0
     try:
         with destination.open("wb") as handle:
@@ -86,9 +84,9 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadResult:
 
 @router.get("/documents", response_model=list[Document])
 async def list_documents(session: Session = Depends(get_session)) -> list[Document]:
-    rows = session.execute(
-        select(DocumentRow).order_by(desc(DocumentRow.created_at))
-    ).scalars().all()
+    rows = (
+        session.execute(select(DocumentRow).order_by(desc(DocumentRow.created_at))).scalars().all()
+    )
     return [
         Document(
             id=row.id,  # type: ignore[arg-type]
@@ -104,7 +102,7 @@ async def list_documents(session: Session = Depends(get_session)) -> list[Docume
 
 
 @router.post("/documents/search", response_model=list[Chunk])
-async def search_documents(payload: DocumentSearchRequest) -> list[Chunk]:
+def search_documents(payload: DocumentSearchRequest) -> list[Chunk]:
     if not payload.query.strip():
         raise HTTPException(status_code=422, detail="query must not be empty")
     return get_retriever().search(payload.query, top_k=min(max(payload.top_k, 1), 20))

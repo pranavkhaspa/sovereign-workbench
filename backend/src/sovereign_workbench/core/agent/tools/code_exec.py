@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
 
 from sovereign_workbench.core.agent.tools.base import Tool, ToolContext, ToolResult
@@ -32,13 +34,17 @@ class RunPythonTool(Tool):
                 timeout_s=min(args.timeout_seconds, ctx.settings.tool_timeout_seconds),
             )
             code_path = ctx.workspace_dir / "executed_code.py"
+            if code_path.exists():
+                code_path = ctx.workspace_dir / f"executed_code_{uuid4().hex[:8]}.py"
             code_path.write_text(args.code, encoding="utf-8")
             output = (
                 f"exit={result.exit_code}\n--- stdout ---\n{result.stdout}"
-                f"\n--- stderr ---\n{result.stderr}"
+                f"\n--- stderr ---\n{result.stderr}\ntimed_out={result.timed_out}"
             )
+            log_path = code_path.with_suffix(".log")
+            log_path.write_text(output, encoding="utf-8")
             return ToolResult(
-                ok=result.exit_code == 0,
+                ok=result.exit_code == 0 and not result.timed_out,
                 output=output,
                 data={
                     "exit_code": result.exit_code,
@@ -46,7 +52,12 @@ class RunPythonTool(Tool):
                     "artifact_kind": "code",
                 },
                 artifact_path=code_path,
-                error=None if result.exit_code == 0 else result.stderr[:500],
+                extra_artifacts=[(log_path, "log")],
+                error=(
+                    "sandbox timed out"
+                    if result.timed_out
+                    else None if result.exit_code == 0 else result.stderr[:500]
+                ),
             )
         except Exception as exc:
             return ToolResult(ok=False, error=str(exc))

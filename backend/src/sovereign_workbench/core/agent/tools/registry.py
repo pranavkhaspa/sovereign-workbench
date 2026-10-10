@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sovereign_workbench.core.agent.tools.base import Tool
@@ -27,14 +28,21 @@ class ToolRegistry:
         return [tool.json_schema() for tool in self._tools.values()]
 
     def describe(self) -> str:
-        return "\n".join(f"- {t.name}: {t.description}" for t in self._tools.values())
+        return json.dumps(self.schemas())
 
 
 def build_default_registry() -> ToolRegistry:
     """Register the built-in tools."""
     from sovereign_workbench.core.agent.tools.approval_note import CreateApprovalNoteTool
+    from sovereign_workbench.core.agent.tools.calculator import CalculateTool
     from sovereign_workbench.core.agent.tools.code_exec import RunPythonTool
+    from sovereign_workbench.core.agent.tools.deliverables import (
+        CreateDocumentTool,
+        CreatePresentationTool,
+        CreateSpreadsheetTool,
+    )
     from sovereign_workbench.core.agent.tools.doc_search import SearchDocumentsTool
+    from sovereign_workbench.core.agent.tools.documents import ReadDocumentTool
     from sovereign_workbench.core.agent.tools.fs_tools import (
         ListFilesTool,
         ReadFileTool,
@@ -46,9 +54,14 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     for tool in (
         ListFilesTool(),
+        CalculateTool(),
         ReadFileTool(),
+        ReadDocumentTool(),
         WriteFileTool(),
         RunPythonTool(),
+        CreateDocumentTool(),
+        CreatePresentationTool(),
+        CreateSpreadsheetTool(),
         ReadSpreadsheetTool(),
         SearchDocumentsTool(),
         DescribeImageTool(),

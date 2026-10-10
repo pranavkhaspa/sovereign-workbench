@@ -29,18 +29,19 @@ dependencies = [
   "python-docx>=1.1",
   "python-pptx>=0.6.23",
   "openpyxl>=3.1",
+  "xlsxwriter>=3.2",
 ]
 
 [project.optional-dependencies]
 rag = [
   "sentence-transformers>=3.0",
-  "chromadb>=0.5",
   "pypdf>=4.2",
 ]
 ocr = [
   "pytesseract>=0.3.10",
   "pillow>=10.3",
   "pypdf>=4.2",
+  "pdf2image>=1.17",
 ]
 all = [
   "sovereign-workbench[rag,ocr]",

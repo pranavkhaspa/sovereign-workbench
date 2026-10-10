@@ -113,14 +113,14 @@ already handles both the normalized `error` shape and legacy `detail` responses.
 {
   "models": [
     {
-      "id": "qwen2.5-3b-instruct",
+      "id": "planner-min",
       "label": "...",
       "provider": "ollama",
       "remote": false,
       "tier": "min",
       "capabilities": ["plan", "chat"],
       "available": true,
-      "size_hint": "3b",
+      "size_hint": null,
       "notes": "..."
     }
   ]
@@ -155,7 +155,7 @@ the live SSE response in one request. The request body is:
 }
 ```
 
-`attachments` contains indexed document IDs from `/api/documents`, not local file
+`attachments` contains document IDs from `/api/documents`, not local file
 paths. The upload must complete before the document can be attached.
 
 The response is `text/event-stream`. Each frame is separated by a blank line and
@@ -167,7 +167,8 @@ data: {"type":"token","task_id":"...","at":"...","data":{"text":"..."}}
 
 ```
 
-Events currently emitted are:
+Persisted frames additionally include `id: <integer>` before `event:` and an `id`
+field in the JSON envelope. Treat it as an opaque resume cursor. Events emitted are:
 
 | Event | Important `data` fields |
 | --- | --- |
@@ -175,10 +176,10 @@ Events currently emitted are:
 | `plan` | `steps[]`, `model_id`, `planning_model_id`, `capability` |
 | `step_start` | `index`, `title` |
 | `tool_call` | `tool`, `args` |
-| `tool_result` | `tool`, `ok`, `output`, `error` |
+| `tool_result` | `tool`, `ok`, `output`, `error`, structured `data` (citations/calculations/etc.) |
 | `token` | `text` |
 | `artifact` | artifact fields including `id`, `filename`, `kind`, `size_bytes` |
-| `done` | `artifacts[]` |
+| `done` | `artifacts[]`, `citations[]` |
 | `error` | `code`, `message`, optional `tool` |
 
 The existing `src/api/sse.ts` uses `fetch`, not `EventSource`, because the stream
@@ -190,14 +191,25 @@ There is also a two-request task flow for reconnect/history work:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/tasks` | Create and persist a task; returns a full `Task` with HTTP 201 |
-| GET | `/api/tasks?limit=50` | Recent task history |
+| GET | `/api/tasks?limit=50&cursor=<last-task-id>` | Recent task history, descending order |
 | GET | `/api/tasks/{id}` | Full task, persisted steps, and artifacts |
-| GET | `/api/tasks/{id}/events` | SSE replay/continuation for a persisted task |
+| GET | `/api/tasks/{id}/events?after=<event-id>` | SSE replay/continuation; also accepts `Last-Event-ID` |
 | POST | `/api/tasks/{id}/cancel` | Cancel a queued/running task; returns `{ok: true}` |
 
 The current UI uses `GET /api/tasks/{id}` for recovery. A stop button currently
 stops the browser stream; wiring it to the cancel route is a high-priority follow-up
 before calling cancellation complete.
+
+Execution begins on the first SSE subscription and continues after a disconnect.
+Multiple subscribers do not execute the task twice. All tokens and events survive
+a backend restart. Previously running work becomes `error/TASK_INTERRUPTED` after
+a crash; the user may submit a new task. Runs are serialized on the minimum tier.
+Final answers stream actual provider tokens. The agent may emit additional `plan`
+events for recovery; never assume a single plan event per run.
+
+Artifact tools can always produce the requested downloadable deliverable. `write_files`
+controls the general `write_file` tool; `run_code` controls sandbox execution. Code runs
+produce a source artifact and a separate `.log` with stdout, stderr, exit and timeout.
 
 ### Documents and search
 
@@ -233,8 +245,8 @@ These are known follow-ups for the next frontend branch:
 1. Wire the stop control to `POST /api/tasks/{id}/cancel`, then abort the browser
    stream after the backend acknowledges cancellation.
 2. Make reconnect resume `/api/tasks/{id}/events` or clearly distinguish polling
-   recovery from live SSE resume; recovered token text is not reconstructible from
-   persisted steps.
+    recovery from live SSE resume. Reconstruct text from persisted `token` events,
+    and resume after the last processed event ID to avoid duplicate text.
 3. Add document delete UI and an artifact preview/code viewer where useful.
 4. Add Vitest coverage for the API client, SSE framing/parser, model selection,
    timeline, and artifact list.

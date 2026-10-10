@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from sovereign_workbench.config import get_settings
 from sovereign_workbench.core.sandbox.base import Sandbox, SandboxResult
+from sovereign_workbench.core.sandbox.process import collect
 from sovereign_workbench.observability.logging import get_logger
 
 if os.name == "posix":
@@ -69,33 +72,24 @@ class SubprocessSandbox(Sandbox):
                     env=env,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    preexec_fn=(lambda: _limit_process(memory_bytes, timeout_s))
-                    if os.name == "posix"
-                    else None,
+                    start_new_session=True,
+                    preexec_fn=(
+                        (lambda: _limit_process(memory_bytes, timeout_s))
+                        if os.name == "posix"
+                        else None
+                    ),
                 )
             except OSError as exc:
                 return SandboxResult(exit_code=127, stdout="", stderr=str(exc))
 
-            try:
-                out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-                timed_out = False
-            except TimeoutError:
-                proc.kill()
-                out, err = await proc.communicate()
-                timed_out = True
-
-            return SandboxResult(
-                exit_code=proc.returncode if proc.returncode is not None else -1,
-                stdout=out.decode("utf-8", "replace")[:16_000],
-                stderr=err.decode("utf-8", "replace")[:16_000],
-                timed_out=timed_out,
-            )
+            return await collect(proc, timeout_s)
 
 
 def _limit_process(memory_bytes: int, timeout_s: int) -> None:
     resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
     resource.setrlimit(resource.RLIMIT_CPU, (timeout_s + 1, timeout_s + 1))
     resource.setrlimit(resource.RLIMIT_FSIZE, (8 * 1024 * 1024, 8 * 1024 * 1024))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
 _sandbox: Sandbox | None = None
@@ -104,10 +98,37 @@ _sandbox: Sandbox | None = None
 def get_sandbox() -> Sandbox:
     global _sandbox
     if _sandbox is None:
-        _sandbox = SubprocessSandbox()
+        settings = get_settings()
+        use_docker = settings.sandbox_backend == "docker" or (
+            settings.sandbox_backend == "auto"
+            and _docker_image_available(settings.sandbox_docker_image)
+        )
+        if use_docker:
+            from sovereign_workbench.core.sandbox.docker_sandbox import DockerSandbox
+
+            _sandbox = DockerSandbox()
+        else:
+            _sandbox = SubprocessSandbox()
     return _sandbox
 
 
 def reset_sandbox() -> None:
     global _sandbox
     _sandbox = None
+
+
+def _docker_image_available(image: str) -> bool:
+    docker = shutil.which("docker")
+    if docker is None:
+        return False
+    try:
+        result = subprocess.run(
+            [docker, "image", "inspect", image],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0

@@ -26,13 +26,13 @@ when*. Mock support is planned under §7.1; `frontend/src/api/mock.ts` and a
 
 - [x] Create repo skeleton, `CONTEXT.md`, `CHECKLIST.md`, `README.md`, `LICENSE` (Apache-2.0)
 - [x] `docs/ARCHITECTURE.md`, `docs/SOVEREIGNTY.md`, `docs/MODELS.md`, `docs/adr/0001`
-- [~] `.github/workflows/*` CI (backend, frontend, docker, codeql, licences; lint/licence failures pending)
+- [~] `.github/workflows/*` CI (local lint/tests/licences verified; remote runs require GitHub authentication)
 - [x] `scripts/bootstrap.sh` (venv + install backend & frontend deps)
 - [~] `scripts/pull-models.sh` (registry selection and dry-run verified; live Ollama pull pending)
 - [x] `scripts/dev.sh` (run backend + frontend together)
 - [x] `scripts/verify-airgap.sh` (assert no external sockets)
-- [ ] `models/models.toml` registry filled for min tier + large tier + remote
-- [~] `docker-compose.yml` (+ `.gpu.yml` profile; parsed but Docker config/build pending)
+- [x] `models/models.toml` registry filled for min tier + large tier + remote
+- [~] CPU/GPU Compose configurations validated; image builds require Docker-capable host
 - [x] `make` targets: `dev`, `lint`, `test`, `build`, `verify-airgap`
 
 Setup notes: the repository now includes Git metadata after the baseline commit and a
@@ -42,39 +42,37 @@ The implemented route and SSE details are documented in
 [`docs/FRONTEND_HANDOFF.md`](docs/FRONTEND_HANDOFF.md); the current UI's live stream is
 `POST /api/chat`.
 
-Verification blockers outside this setup scope: backend Ruff/Black checks fail on backend
-sources (mypy passes), and the Python
-dependency licence allow-list currently rejects MPL-2.0 packages
-(`certifi`, `pathspec`). The minimum-tier Qwen2.5 3B and Coder 3B weights in the registry
-also carry the Qwen Research License rather than a permissive licence; choose compliant
-registry models before claiming the all-permissive runtime requirement. A Compose build,
-GPU run, and live model pull still need Docker/Ollama on the deployment host.
+Backend completion status and remaining deployment gates are tracked in
+[`docs/BACKEND_STATUS.md`](docs/BACKEND_STATUS.md). The licence workflow checks
+documented certifi/pathspec exceptions separately; minimum-tier weights are now
+Apache-2.0 1.5B models. Docker build/sandbox and live model/hardware checks require
+the deployment host. See ADR 0002 for reconciled runtime decisions.
 
 ## 2. Backend — LLM layer (backend/infra)
 
-- [ ] `core/llm/provider.py` — `ChatMessage`, `Completion`, `ModelProvider` ABC
-- [ ] `core/llm/providers/openai_compatible.py` — works with Ollama `/v1`, vLLM, OpenAI, OpenRouter
-- [ ] `core/llm/providers/llamacpp.py` — llama.cpp server adapter
-- [ ] `core/llm/registry.py` — load `models/models.toml`, expose available models by capability
-- [ ] `core/llm/router.py` — classify task → pick model by capability + hardware tier + availability
-- [ ] `core/llm/router.py` — **must demonstrate selection across ≥2 task types** (code vs summary)
-- [ ] `core/llm/registry.py` — remote providers disabled when `AIRGAP=true`
-- [ ] Unit tests: router picks code model for code tasks, vision model for images
+- [x] `core/llm/provider.py` — `ChatMessage`, `Completion`, `ModelProvider` ABC
+- [x] `core/llm/providers/openai_compatible.py` — OpenAI-compatible protocol, tested in-memory
+- [x] `core/llm/providers/llamacpp.py` — llama.cpp server adapter
+- [x] `core/llm/registry.py` — load registry and probe installed models (including `:latest` aliases)
+- [x] `core/llm/router.py` — classify task → model by capability, hardware tier and availability
+- [x] Model selection across ≥2 task types (code vs summary), covered by tests
+- [x] Remote providers disabled when `AIRGAP=true`
+- [x] Unit tests for code/general/vision model selection
 
 ## 3. Backend — Agent core (backend/infra)
 
-- [ ] `core/agent/loop.py` — plan → act → observe → iterate, bounded steps, streaming events
-- [ ] `core/agent/planner.py` — decomposes task into steps; can re-plan on failure
-- [ ] `core/agent/executor.py` — runs a step, dispatches to tools
-- [ ] `core/agent/memory.py` — scratchpad + retrieved context + artifact refs
-- [ ] `core/agent/tools/base.py` — `Tool` ABC + JSON schema + `ToolResult`
-- [ ] `core/agent/tools/registry.py` — register/discover tools
-- [ ] Tool: `fs_tools.py` — read/write/list inside a jailed workspace dir
-- [ ] Tool: `code_exec.py` — run code via sandbox, return stdout/stderr/exit
-- [ ] Tool: `spreadsheet.py` — read/compute `.xlsx` (openpyxl)
-- [ ] Tool: `doc_search.py` — query the local knowledge base (RAG) with citations
-- [ ] Tool: `ocr_vision.py` — OCR + local vision description of an image/scanned page
-- [ ] Emit SSE events: `plan`, `step_start`, `tool_call`, `tool_result`, `token`, `artifact`, `done`, `error`
+- [x] `core/agent/loop.py` — bounded plan/act/observe, provider-token streaming
+- [x] `core/agent/planner.py` — schema-informed plans and bounded failure recovery
+- [x] `core/agent/executor.py` — validation, permissions, timeouts, dispatch
+- [x] `core/agent/memory.py` — observations, citations, artifact refs
+- [x] `core/agent/tools/base.py` — `Tool` ABC + JSON schema + `ToolResult`
+- [x] `core/agent/tools/registry.py` — registered/discoverable tools
+- [x] Jailed filesystem read/write/list and binary-document extraction tools
+- [x] Code execution returns stdout/stderr/exit and source/log artifacts
+- [x] Read XLSX with openpyxl; write computed XLSX with XlsxWriter
+- [x] Local document search with file/page/span citations
+- [x] OCR + router-selected vision description tool
+- [x] Durable SSE: `plan`, `step_start`, `tool_call`, `tool_result`, `token`, `artifact`, `done`, `error`
 
 <a id="api-contract"></a>
 
@@ -82,25 +80,21 @@ GPU run, and live model pull still need Docker/Ollama on the deployment host.
 
 Base URL `/api`. All JSON unless noted. Errors: `{ "error": { "code", "message" } }`.
 
-**Implementation reconciliation needed:** this table is the team's target contract.
-The current `GET /api/models` returns `{ "models": ModelInfo[] }` rather than a bare
-array, the current artifact download route is `GET /api/artifacts/{id}/download`,
-and the current frontend streams through `POST /api/chat`. Some FastAPI errors still
-use `detail` rather than the envelope above. Keep the frontend and backend aligned
-when freezing this section; the setup verifier uses only `/api/health` and
-`/api/audit/egress`.
+The table below and [`docs/FRONTEND_HANDOFF.md`](docs/FRONTEND_HANDOFF.md) describe
+the implemented contract. `POST /api/chat` is the create-and-stream shortcut;
+artifact downloads support both the short path and `/download`.
 
 | Method | Path | Body / params | Returns | Used by |
 | --- | --- | --- | --- | --- |
 | GET | `/health` | – | `{status, version, airgap, models_ready}` | shell |
-| GET | `/models` | – | `ModelInfo[]` `{id,label,capabilities[],tier,provider,available,size_hint}` | Models panel |
+| GET | `/models` | – | `{models: ModelInfo[]}` | Models panel |
 | GET | `/models/{id}` | – | `ModelInfo` | Models panel |
 | POST | `/tasks` | `{prompt, attachments[], model_id?, options}` | `Task` | composer |
 | GET | `/tasks` | `?limit&cursor` | `Task[]` | history |
 | GET | `/tasks/{id}` | – | `Task` (with steps) | task view |
 | GET | `/tasks/{id}/events` | SSE | event stream (see §3) | live timeline |
 | POST | `/tasks/{id}/cancel` | – | `{ok}` | task view |
-| POST | `/documents` | multipart file(s) | `{document_id, chunks, status}` | upload |
+| POST | `/documents` | multipart `file` (one per request) | `{document_id, chunks, status}` | upload |
 | GET | `/documents` | – | `Document[]` | knowledge base |
 | GET | `/documents/{id}` | – | `Document` | knowledge base |
 | DELETE | `/documents/{id}` | – | `{ok}` | knowledge base |
@@ -114,33 +108,33 @@ Types live in `frontend/src/api/types.ts` and mirror `backend/src/sovereign_work
 
 ## 5. Backend — RAG, multimodal, deliverables, sandbox, security
 
-- [ ] `core/rag/ingest.py` — accept pdf/txt/md/docx/img, extract text
-- [ ] `core/rag/chunker.py` — token-aware chunking with source spans (for citations)
-- [ ] `core/rag/embeddings.py` — bge-small via sentence-transformers (lazy import)
-- [ ] `core/rag/store.py` — embedded vector store (chromadb persistent) behind an interface
-- [ ] `core/rag/retriever.py` — top-k + optional rerank, returns `Citation`
-- [ ] `core/multimodal/ocr.py` — Tesseract default, PaddleOCR optional
-- [ ] `core/multimodal/vision.py` — call vision model via router
-- [ ] `core/deliverables/docx_writer.py` (python-docx)
-- [ ] `core/deliverables/pptx_writer.py` (python-pptx)
-- [ ] `core/deliverables/xlsx_writer.py` (openpyxl)
-- [ ] `core/sandbox/base.py` — `Sandbox` ABC (`run(code, lang) -> ExecResult`)
-- [ ] `core/sandbox/docker_sandbox.py` — `--network none`, memory/cpu limits, tmpfs
-- [ ] `core/sandbox/subprocess_sandbox.py` — rlimits fallback (documented as best-effort)
-- [ ] `core/security/airgap.py` — `EgressGuard`; blocks+logs non-local hosts in air-gap
-- [ ] `core/security/audit.py` — append-only audit events (SQLite)
+- [x] `core/rag/indexer.py` + `extract.py` — PDF/TXT/MD/DOCX/images/XLSX ingestion
+- [x] Character-bounded chunks with page and normalized-text spans (ADR 0002)
+- [x] Hashing embeddings and lazy, cache-only-in-airgap sentence-transformers
+- [x] SQLite cosine vector store behind retriever facade (ADR 0002)
+- [x] Top-k retrieval returning citations; reranking remains stretch scope
+- [x] Tesseract OCR and page-at-a-time scanned PDF rendering; PaddleOCR deferred
+- [x] Router-selected vision model with local image/PDF payloads
+- [x] DOCX writer and approval-note tool
+- [x] PPTX writer and presentation tool
+- [x] XLSX writer with cached computed values; safe arithmetic tool
+- [x] Sandbox ABC
+- [~] Docker sandbox implemented; actual container execution requires Docker-capable host
+- [x] Subprocess rlimits fallback, bounded output and process cleanup
+- [x] Egress guard blocks/audits external hosts and disables proxy-environment bypass
+- [x] SQLite audit events and restart-persistent egress counters
 
 ## 6. Backend — persistence, app, config, tests
 
-- [ ] `db/models.py` — `Task`, `Step`, `Document`, `Artifact`, `AuditEvent` (SQLAlchemy)
-- [ ] `db/session.py` — SQLite engine + session factory
-- [ ] `schemas/*.py` — Pydantic models matching §4
-- [ ] `config.py` — `pydantic-settings`; `AIRGAP`, `OLLAMA_BASE_URL`, provider keys, paths
-- [ ] `main.py` — FastAPI app, CORS, routers, lifespan (DB init, load registry)
-- [ ] `api/routes/*.py` — implement every row of §4
-- [ ] `api/deps.py` — DI for db, registry, router, agent
-- [ ] Tests: unit (router, chunker, airgap, sandbox-denies-network) + integration (create task → mock model → artifact)
-- [ ] Coverage ≥ 70% on `core/`
+- [x] SQLAlchemy tasks/steps/documents/chunks/artifacts/audit/task-events
+- [x] SQLite sessions, foreign keys, WAL and additive task migration
+- [x] Pydantic schemas and normalized HTTP/validation errors
+- [x] Settings for airgap, providers, paths and sandbox/agent limits
+- [x] FastAPI lifecycle, model probing, interrupted-task recovery and worker shutdown
+- [x] Every implemented §4 route, pagination, durable event replay and cancellation
+- [x] Dependency injection for registry/router/tools/runner
+- [x] Offline unit/integration suite including real OCR and downloadable office files
+- [x] Core coverage ≥70%, enforced in CI
 
 ## 7. FRONTEND — owner: Rohit
 
@@ -224,17 +218,17 @@ Types live in `frontend/src/api/types.ts` and mirror `backend/src/sovereign_work
 
 ## 8. CI & quality (backend/infra)
 
-- [~] `backend-ci.yml` — ruff, black --check, mypy, pytest (pytest/mypy pass; Ruff/Black need backend fixes)
+- [~] `backend-ci.yml` — local checks fixed; remote run pending authenticated GitHub access
 - [~] `frontend-ci.yml` — eslint, tsc --noEmit, build (all local checks pass; CI run pending; no test script yet)
 - [~] `docker.yml` — build backend + frontend images; compose smoke test (awaiting Docker run)
 - [~] `codeql.yml` — code scanning (python + javascript; awaiting CI run)
-- [!] `license-check.yml` — dependency licence allow-list (current Python dependency graph contains MPL-2.0)
-- [ ] Branch protection rules documented in `CONTRIBUTING.md`
+- [x] `license-check.yml` — permissive allow-list plus named, separately checked MPL exceptions
+- [x] Branch protection rules documented in `CONTRIBUTING.md` (admin must enable them)
 
 ## 9. Demo-readiness (both)
 
-- [ ] End-to-end: scanned report → findings → `.docx` approval note
-- [ ] Coding task runs in sandbox, verified
+- [x] Automated real scanned PDF → findings → downloadable `.docx` approval note
+- [x] Coding task runs in subprocess sandbox with downloadable verification log
 - [ ] Multimodal task on a drawing/photo
 - [ ] Router visibly switches models between at least two task types
 - [ ] Sovereignty panel shows 0 external calls (run `scripts/verify-airgap.sh`)

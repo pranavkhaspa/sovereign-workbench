@@ -37,7 +37,17 @@ jobs:
           python-version: "3.12"
       - name: Bootstrap backend dependencies
         run: ./scripts/bootstrap.sh --skip-frontend
+      - name: Install local OCR tools
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils fonts-dejavu-core
       - name: Backend lint
         run: make backend-lint
       - name: Backend tests
-        run: make backend-test
+        working-directory: backend
+        run: ../.venv/bin/pytest --cov=sovereign_workbench.core --cov-report=term-missing --cov-fail-under=70
+      - name: Provision sandbox image before offline execution test
+        run: docker pull python:3.12-slim
+      - name: Verify Docker sandbox isolation
+        working-directory: backend
+        env:
+          SW_TEST_DOCKER: "1"
+        run: ../.venv/bin/pytest tests/test_docker_sandbox.py

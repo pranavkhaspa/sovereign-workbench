@@ -30,16 +30,18 @@ class ReadSpreadsheetTool(Tool):
         try:
             target: Path = _safe_path(ctx, args.path)
             workbook = load_workbook(target, read_only=True, data_only=True)
-            sheet = workbook[args.sheet] if args.sheet else workbook[workbook.sheetnames[0]]
-            rows = []
-            for i, row in enumerate(sheet.iter_rows(values_only=True)):
-                if i >= args.max_rows:
-                    break
-                rows.append(" | ".join("" if c is None else str(c) for c in row))
+            try:
+                sheet = workbook[args.sheet] if args.sheet else workbook[workbook.sheetnames[0]]
+                rows = [
+                    " | ".join("" if c is None else str(c) for c in row)
+                    for row in sheet.iter_rows(max_row=args.max_rows, values_only=True)
+                ]
+            finally:
+                workbook.close()
             return ToolResult(
                 ok=True,
                 output=f"sheet={sheet.title} rows={len(rows)}\n" + "\n".join(rows),
                 data={"sheet": sheet.title, "rows": len(rows)},
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult(ok=False, error=str(exc))

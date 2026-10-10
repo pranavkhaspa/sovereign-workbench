@@ -39,7 +39,9 @@ def search(session: Session, query_vector: list[float], top_k: int = 5) -> list[
             vector = json.loads(chunk.embedding)
         except json.JSONDecodeError:
             continue
-        scored.append((cosine(query_vector, vector), chunk, document))
+        score = cosine(query_vector, vector)
+        if score > 0:
+            scored.append((score, chunk, document))
     scored.sort(key=lambda item: item[0], reverse=True)
     results: list[Chunk] = []
     for score, chunk, document in scored[:top_k]:

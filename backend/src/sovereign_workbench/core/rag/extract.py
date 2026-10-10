@@ -47,14 +47,15 @@ def _extract_pdf(path: Path) -> list[tuple[int | None, str]]:
             pages.append((number, text))
         else:
             pages.append((number, ""))
-    if any(text.strip() for _, text in pages):
+    if all(text.strip() for _, text in pages):
         return pages
     from sovereign_workbench.core.multimodal.ocr import extract_pdf_pages
 
-    ocr_pages = extract_pdf_pages(path)
-    if ocr_pages:
-        return [(index, text) for index, text in enumerate(ocr_pages, start=1)]
-    return pages
+    return [
+        (number, text or "\n".join(extract_pdf_pages(path, page_numbers=[number])))
+        for number, text in pages
+        if number is not None
+    ]
 
 
 def _extract_docx(path: Path) -> list[tuple[int | None, str]]:
@@ -64,7 +65,13 @@ def _extract_docx(path: Path) -> list[tuple[int | None, str]]:
         log.warning("python-docx not installed")
         return []
     document = docx.Document(str(path))
-    return [(None, "\n".join(p.text for p in document.paragraphs))]
+    lines = [p.text for p in document.paragraphs]
+    lines.extend(
+        " | ".join(cell.text for cell in row.cells)
+        for table in document.tables
+        for row in table.rows
+    )
+    return [(None, "\n".join(lines))]
 
 
 def _extract_xlsx(path: Path) -> list[tuple[int | None, str]]:
@@ -75,9 +82,12 @@ def _extract_xlsx(path: Path) -> list[tuple[int | None, str]]:
         return []
     workbook = load_workbook(path, read_only=True, data_only=True)
     pages: list[tuple[int | None, str]] = []
-    for sheet in workbook.worksheets:
-        lines = []
-        for row in sheet.iter_rows(values_only=True):
-            lines.append(" | ".join("" if c is None else str(c) for c in row))
-        pages.append((None, f"# sheet: {sheet.title}\n" + "\n".join(lines)))
+    try:
+        for sheet in workbook.worksheets:
+            lines = []
+            for row in sheet.iter_rows(values_only=True):
+                lines.append(" | ".join("" if c is None else str(c) for c in row))
+            pages.append((None, f"# sheet: {sheet.title}\n" + "\n".join(lines)))
+    finally:
+        workbook.close()
     return pages

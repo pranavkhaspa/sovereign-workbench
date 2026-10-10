@@ -5,13 +5,15 @@ from __future__ import annotations
 import contextlib
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 from sovereign_workbench import __version__
 from sovereign_workbench.api import api_router
+from sovereign_workbench.api.deps import get_task_runner
 from sovereign_workbench.config import get_settings
 from sovereign_workbench.core.llm.registry import get_registry
 from sovereign_workbench.core.security.audit import get_audit_log
@@ -27,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
     settings.ensure_dirs()
     init_db()
+    get_task_runner().recover_interrupted()
     get_audit_log().record("app_started", actor="system", detail=f"version {__version__}")
     try:
         await get_registry().refresh_availability()
@@ -36,8 +39,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "sovereign workbench ready",
         extra={"extra_fields": {"airgap": settings.airgap, "tier": settings.hardware_tier}},
     )
-    yield
-    get_audit_log().record("app_stopped", actor="system", detail="shutdown")
+    try:
+        yield
+    finally:
+        await get_task_runner().shutdown()
+        get_audit_log().record("app_stopped", actor="system", detail="shutdown")
 
 
 def create_app() -> FastAPI:
@@ -63,7 +69,9 @@ def create_app() -> FastAPI:
             error = detail
         else:
             error = {"code": f"http_{exc.status_code}", "message": str(detail)}
-        return JSONResponse(status_code=exc.status_code, content={"error": error})
+        return JSONResponse(
+            status_code=exc.status_code, content={"error": error}, headers=exc.headers
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -80,6 +88,7 @@ def create_app() -> FastAPI:
                 }
             },
         )
+
     app.include_router(api_router)
     return app
 

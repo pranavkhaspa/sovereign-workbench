@@ -21,3 +21,8 @@ def test_egress_status(client):
     response = client.get("/api/health/egress")
     assert response.status_code == 200
     assert response.json()["airgap"] is True
+
+
+def test_unmatched_routes_and_validation_use_error_envelope(client):
+    assert client.get("/api/missing").json()["error"]["code"] == "http_404"
+    assert client.post("/api/tasks", json={}).json()["error"]["code"] == "validation_error"

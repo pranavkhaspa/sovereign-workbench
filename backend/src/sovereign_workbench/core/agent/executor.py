@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from pydantic import ValidationError
 
 from sovereign_workbench.core.agent.planner import PlanStep
@@ -31,14 +33,23 @@ class StepExecutor:
                 detail=f"{tool.name} denied: {reason}",
                 data={"tool": tool.name, "reason": reason},
             )
-            return ToolResult(ok=False, error=reason or "not permitted")
+            return ToolResult(
+                ok=False, error=reason or "not permitted", data={"failure_code": "TOOL_DENIED"}
+            )
 
         try:
             args = tool.args_schema(**step.args)
-        except ValidationError as exc:
-            return ToolResult(ok=False, error=f"invalid arguments: {exc.errors()}")
+        except (ValidationError, TypeError) as exc:
+            return ToolResult(ok=False, error=f"invalid arguments: {exc}")
 
         get_audit_log().record(
             "tool_call", detail=f"called {tool.name}", data={"tool": tool.name, "args": step.args}
         )
-        return await tool.run(args, ctx)
+        try:
+            return await asyncio.wait_for(tool.run(args, ctx), ctx.settings.tool_timeout_seconds)
+        except TimeoutError:
+            return ToolResult(
+                ok=False, error="tool timed out", data={"failure_code": "TOOL_TIMEOUT"}
+            )
+        except Exception as exc:
+            return ToolResult(ok=False, error=str(exc))

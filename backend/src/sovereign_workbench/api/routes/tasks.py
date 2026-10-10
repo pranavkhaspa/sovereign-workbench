@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -20,12 +20,14 @@ router = APIRouter(tags=["tasks"])
 
 
 def _to_task(session: Session, row: TaskRow) -> Task:
-    steps = session.execute(
-        select(StepRow).where(StepRow.task_id == row.id).order_by(StepRow.index)
-    ).scalars().all()
-    artifacts = session.execute(
-        select(ArtifactRow).where(ArtifactRow.task_id == row.id)
-    ).scalars().all()
+    steps = (
+        session.execute(select(StepRow).where(StepRow.task_id == row.id).order_by(StepRow.index))
+        .scalars()
+        .all()
+    )
+    artifacts = (
+        session.execute(select(ArtifactRow).where(ArtifactRow.task_id == row.id)).scalars().all()
+    )
     return Task(
         id=row.id,  # type: ignore[arg-type]
         prompt=row.prompt,
@@ -97,9 +99,16 @@ async def create_task(
 @router.get("/tasks/{task_id}/events")
 async def task_events(
     task_id: UUID,
+    after: int = Query(default=0, ge=0),
+    last_event_id: str | None = Header(default=None),
     runner: TaskRunner = Depends(get_task_runner),
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
+    if last_event_id is not None:
+        try:
+            after = max(after, int(last_event_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid Last-Event-ID") from exc
     inputs = runner.task_inputs(task_id)
     if inputs is None:
         raise HTTPException(status_code=404, detail="task not found")
@@ -116,8 +125,9 @@ async def task_events(
                 options=options,
                 attachments=attachments,
                 model_id=model_id,
+                after=after,
             ):
-                yield _sse(event.type, event.model_dump(mode="json"))
+                yield _sse(event.type, event.model_dump(mode="json"), event.id)
         except Exception as exc:
             yield _sse(
                 "error",
@@ -138,11 +148,19 @@ async def task_events(
 @router.get("/tasks", response_model=list[Task])
 async def list_tasks(
     limit: int = 50,
+    cursor: UUID | None = None,
     session: Session = Depends(get_session),
 ) -> list[Task]:
-    rows = session.execute(
-        select(TaskRow).order_by(desc(TaskRow.created_at)).limit(min(max(limit, 1), 200))
-    ).scalars().all()
+    statement = select(TaskRow).order_by(desc(TaskRow.created_at), desc(TaskRow.id))
+    if cursor is not None:
+        previous = session.get(TaskRow, str(cursor))
+        if previous is None:
+            raise HTTPException(status_code=422, detail="unknown task cursor")
+        statement = statement.where(
+            (TaskRow.created_at < previous.created_at)
+            | ((TaskRow.created_at == previous.created_at) & (TaskRow.id < previous.id))
+        )
+    rows = session.execute(statement.limit(min(max(limit, 1), 200))).scalars().all()
     return [_to_task(session, row) for row in rows]
 
 
@@ -173,8 +191,9 @@ def _attachments(row: TaskRow) -> list[str]:
     return [str(item) for item in value if item]
 
 
-def _sse(event_type: str, payload: dict[str, object]) -> str:
-    return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
+def _sse(event_type: str, payload: dict[str, object], event_id: int | None = None) -> str:
+    prefix = f"id: {event_id}\n" if event_id is not None else ""
+    return f"{prefix}event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
 
 def _json_dict(raw: str | None) -> dict[str, object] | None:

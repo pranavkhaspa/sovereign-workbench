@@ -55,3 +55,16 @@ def test_registry_does_not_mark_uninstalled_models_available():
     assert router.route("fix my Python function").spec.id == "general"
     with pytest.raises(NoModelAvailable):
         router.route("describe this scanned image", has_image=True)
+
+
+def test_ollama_latest_alias_matches_registry_name(monkeypatch):
+    provider = InstalledModels()
+
+    async def available():
+        return {"moondream2:latest"}
+
+    monkeypatch.setattr(provider, "available_models", available)
+    vision = ModelSpec("vision", "test-provider", False, "min", ["vision"], "moondream2")
+    registry = ModelRegistry([vision], {"test-provider": provider}, airgap=True)
+    asyncio.run(registry.refresh_availability())
+    assert registry.is_available(vision)

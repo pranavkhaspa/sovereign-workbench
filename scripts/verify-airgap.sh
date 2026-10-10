@@ -96,7 +96,8 @@ if parsed_url.scheme != "http" or not parsed_url.hostname or not (
 def fetch(path: str) -> dict[str, object]:
     request = urllib.request.Request(f"{base_url}{path}", headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=5) as response:
             payload = json.load(response)
     except (OSError, urllib.error.URLError) as exc:
         raise SystemExit(f"backend API unavailable at {base_url}{path}: {exc}") from exc

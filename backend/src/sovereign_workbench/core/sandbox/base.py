@@ -16,4 +16,6 @@ class Sandbox(ABC):
     """Runs untrusted code with no network egress and a hard time limit."""
 
     @abstractmethod
-    async def run(self, code: str, *, language: str = "python", timeout_s: int = 30) -> SandboxResult: ...
+    async def run(
+        self, code: str, *, language: str = "python", timeout_s: int = 30
+    ) -> SandboxResult: ...

@@ -73,11 +73,23 @@ class EgressGuard:
                 self._allowed_local += 1
                 if host:
                     self._local_endpoints.add(f"{host}:{urlparse(url).port or ''}".rstrip(":"))
-                return
-            if self.airgap:
+                local_detail = f"Allowed local request to {host}"
+            elif self.airgap:
                 self._blocked += 1
+                local_detail = None
             else:
                 self._external_allowed += 1
+                local_detail = None
+        if local:
+            from sovereign_workbench.core.security.audit import get_audit_log
+
+            get_audit_log().record(
+                "egress_allowed_local",
+                actor="egress-guard",
+                detail=local_detail or "Allowed local request",
+                data={"host": host, "url": url},
+            )
+            return
         if self.airgap and not local:
             from sovereign_workbench.core.security.audit import get_audit_log
 
@@ -88,6 +100,14 @@ class EgressGuard:
                 data={"host": host, "url": url},
             )
             raise EgressBlocked(host or "<unknown>")
+        from sovereign_workbench.core.security.audit import get_audit_log
+
+        get_audit_log().record(
+            "egress_external_allowed",
+            actor="egress-guard",
+            detail=f"Allowed external request to {host}",
+            data={"host": host},
+        )
 
     def status(self) -> dict[str, object]:
         with self._lock:
@@ -99,6 +119,27 @@ class EgressGuard:
                 "local_endpoints": sorted(self._local_endpoints),
             }
 
+    def restore_counts(self) -> None:
+        from sqlalchemy import func, select
+
+        from sovereign_workbench.db.models import AuditEventRow
+        from sovereign_workbench.db.session import session_scope
+
+        with session_scope() as session:
+            rows = session.execute(
+                select(AuditEventRow.type, func.count())
+                .where(
+                    AuditEventRow.type.in_(
+                        ["egress_blocked", "egress_allowed_local", "egress_external_allowed"]
+                    )
+                )
+                .group_by(AuditEventRow.type)
+            ).all()
+            counts = dict(rows)
+        self._blocked = counts.get("egress_blocked", 0)
+        self._allowed_local = counts.get("egress_allowed_local", 0)
+        self._external_allowed = counts.get("egress_external_allowed", 0)
+
 
 _guard: EgressGuard | None = None
 
@@ -107,6 +148,7 @@ def get_egress_guard() -> EgressGuard:
     global _guard
     if _guard is None:
         _guard = EgressGuard(airgap=get_settings().airgap)
+        _guard.restore_counts()
     return _guard
 
 
@@ -120,4 +162,4 @@ class _GuardedTransport(httpx.AsyncHTTPTransport):
 
 def get_client(*, timeout: float = 60.0) -> httpx.AsyncClient:
     """The only sanctioned way to make outbound HTTP calls."""
-    return httpx.AsyncClient(transport=_GuardedTransport(), timeout=timeout)
+    return httpx.AsyncClient(transport=_GuardedTransport(), timeout=timeout, trust_env=False)

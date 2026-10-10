@@ -28,6 +28,8 @@ class ModelRegistry:
         airgap: bool,
     ) -> None:
         self._specs = {spec.id: spec for spec in specs}
+        if len(self._specs) != len(specs):
+            raise ValueError("duplicate model ID in registry")
         self._providers = providers
         self.airgap = airgap
         self._available: dict[str, bool] = {spec.id: False for spec in specs}
@@ -70,17 +72,25 @@ class ModelRegistry:
         for spec in self._specs.values():
             provider = self._providers.get(spec.provider)
             if provider is None:
-                self._available[spec.id] = spec.provider == "local"  # CPU embeddings
+                from sovereign_workbench.core.rag.embeddings import is_model_loaded
+
+                self._available[spec.id] = spec.provider == "local" and is_model_loaded(
+                    spec.model_name
+                )
                 continue
             if spec.provider not in provider_state:
-                models = await provider.available_models()
+                try:
+                    models = await provider.available_models()
+                    state = models is not None or await provider.is_available()
+                except Exception:
+                    models, state = None, False
                 installed[spec.provider] = models
-                provider_state[spec.provider] = (
-                    models is not None or await provider.is_available()
-                )
+                provider_state[spec.provider] = state
             models = installed[spec.provider]
             self._available[spec.id] = provider_state[spec.provider] and (
-                models is None or spec.model_name in models
+                models is None
+                or spec.model_name in models
+                or any(name.removesuffix(":latest") == spec.model_name for name in models)
             )
         self.probed = True
         log.info(
@@ -97,14 +107,12 @@ def _build_providers(specs: list[ModelSpec], settings: Settings) -> dict[str, Mo
             "ollama", f"{settings.ollama_base_url.rstrip('/')}/v1"
         )
     if "llamacpp" in needed:
-        providers["llamacpp"] = LlamaCppProvider(
-            f"{settings.llamacpp_base_url.rstrip('/')}/v1"
-        )
-    if "openai" in needed:
+        providers["llamacpp"] = LlamaCppProvider(f"{settings.llamacpp_base_url.rstrip('/')}/v1")
+    if "openai" in needed and not settings.airgap and settings.openai_api_key:
         providers["openai"] = OpenAICompatibleProvider(
             "openai", "https://api.openai.com/v1", api_key=settings.openai_api_key
         )
-    if "openrouter" in needed:
+    if "openrouter" in needed and not settings.airgap and settings.openrouter_api_key:
         providers["openrouter"] = OpenAICompatibleProvider(
             "openrouter", "https://openrouter.ai/api/v1", api_key=settings.openrouter_api_key
         )

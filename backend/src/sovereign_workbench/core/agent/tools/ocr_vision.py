@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from pydantic import BaseModel, Field
 
 from sovereign_workbench.core.agent.tools.base import Tool, ToolContext, ToolResult
@@ -31,13 +33,17 @@ class DescribeImageTool(Tool):
             from sovereign_workbench.core.multimodal.ocr import extract_text
             from sovereign_workbench.core.multimodal.vision import describe_image
 
-            ocr_text = extract_text(target)
+            ocr_text = await asyncio.to_thread(extract_text, target)
             description = await describe_image(target, args.question)
+            if not ocr_text.strip() and not description.strip():
+                return ToolResult(
+                    ok=False, error="neither OCR nor the local vision model returned content"
+                )
             output = f"--- OCR text ---\n{ocr_text}\n\n--- vision ---\n{description}"
             return ToolResult(
                 ok=True,
                 output=output,
                 data={"ocr_chars": len(ocr_text), "has_vision": bool(description)},
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult(ok=False, error=str(exc))

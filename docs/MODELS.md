@@ -27,8 +27,8 @@ scanned drawing” → `vision` + OCR; “summarise this memo” → `chat` mode
 
 | Role | Model | Why |
 | --- | --- | --- |
-| Plan / chat | `qwen2.5:3b-instruct-q4_K_M` | strong instruction following at ~2 GB |
-| Code | `qwen2.5-coder:3b-instruct-q4_K_M` | best small coder |
+| Plan / chat | `qwen2.5:1.5b-instruct-q4_K_M` | Apache-2.0 weights with a small memory footprint |
+| Code | `qwen2.5-coder:1.5b-instruct-q4_K_M` | Apache-2.0 small coder |
 | Utility | `qwen2.5:1.5b-instruct-q4_K_M` | fast fallbacks, classification |
 | Vision | `moondream2` (Q4) or `smolvlm:500m` | scanned docs/drawings on small GPUs |
 | Embeddings | `bge-small-en-v1.5` (CPU) | tiny, good, runs without GPU |
@@ -39,7 +39,7 @@ scanned drawing” → `vision` + OCR; “summarise this memo” → `chat` mode
 
 ## Larger-tier picks
 
-`qwen2.5:14b`/`32b`, `qwen2.5-coder:14b`/`32b`, `qwen2-vl:7b` for vision,
+`qwen2.5:14b`/`32b`, `qwen2.5-coder:14b`/`32b`, `qwen2.5vl:7b` for vision,
 `bge-large` / `nomic-embed-text` for embeddings.
 
 ## Remote (fallback, air-gap-disabled)
@@ -51,7 +51,8 @@ when `AIRGAP=false` **and** the relevant key is set.
 
 1. New model = one row in `models/models.toml` (+ `scripts/pull-models.sh` if local).
 2. Never hardcode a model id in feature code — ask the router.
-3. Prefer the smallest model that meets the capability; the min tier must always work.
+3. Select the highest available local tier within the configured ceiling. Never
+   automatically widen above the hardware tier. Remote fallback requires AIRGAP=false.
 4. Record the chosen model in the audit log for every task (reproducibility).
 
 ## Setup commands
@@ -75,10 +76,14 @@ weights are placed in the `ollama-models` volume used by the deployment.
 Ollama publishes the minimum-tier vision model under `moondream`; the script creates
 the `moondream2` alias required by the current registry after pulling it.
 
-The registry's [`qwen2.5:3b-instruct-q4_K_M`](https://ollama.com/library/qwen2.5:3b-instruct-q4_K_M)
-and [`qwen2.5-coder:3b-instruct-q4_K_M`](https://ollama.com/library/qwen2.5-coder:3b-instruct-q4_K_M)
-currently have the Qwen Research License, not a
-permissive licence. They need replacing in `models/models.toml` before the project can
-claim all minimum-tier model weights satisfy the licence constraint in `CONTEXT.md`.
-Likewise, confirm large-tier Ollama names with the model publisher before invoking
-`--all-local`; the current `qwen2-vl:7b` row is not published under that library name.
+Publisher licences for the minimum tier:
+[Qwen2.5-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct/blob/main/LICENSE)
+and [Qwen2.5-Coder-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct/blob/main/LICENSE).
+The large vision tag is published as
+[`qwen2.5vl:7b`](https://ollama.com/library/qwen2.5vl:7b).
+
+For sentence-transformers, install the `rag` extra and cache the configured model
+while online. AIRGAP loading uses `local_files_only=True`. Loading errors are explicit;
+it never silently substitutes unrelated vectors. Re-upload/reindex the corpus when
+changing the embedding provider or model. The hashing implementation is lexical,
+not equivalent to learned semantic embeddings.

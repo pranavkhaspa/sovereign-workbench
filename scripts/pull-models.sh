@@ -164,7 +164,7 @@ PY
 
     if ! ollama list >/dev/null 2>&1; then
         if [[ "${START_OLLAMA:-1}" != "1" ]]; then
-            die "Ollama is installed but not reachable; start `ollama serve` or set START_OLLAMA=1"
+            die "Ollama is installed but not reachable; start 'ollama serve' or set START_OLLAMA=1"
         fi
         printf 'pull-models: starting a temporary local Ollama server\n'
         ollama serve >/tmp/sovereign-workbench-ollama.log 2>&1 &
@@ -184,7 +184,7 @@ else
     docker compose --project-directory "$ROOT_DIR" config --services >/dev/null \
         || die "docker compose is unavailable or the Compose file is invalid"
     if ! docker compose --project-directory "$ROOT_DIR" ps --status running --services \
-        | "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if "ollama" in sys.stdin.read().split() else 1'; then
+        | "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if "ollama" in sys.stdin.read().split() else 1)'; then
         printf 'pull-models: starting the Compose Ollama service\n'
         docker compose --project-directory "$ROOT_DIR" up -d ollama
     fi

@@ -19,6 +19,7 @@ AgentEventType = Literal[
 
 
 class AgentEvent(BaseModel):
+    id: int | None = None
     type: AgentEventType
     task_id: UUID
     at: datetime

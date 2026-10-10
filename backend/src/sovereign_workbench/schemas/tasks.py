@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from sovereign_workbench.schemas.artifacts import Artifact
 
@@ -21,6 +21,13 @@ class TaskCreate(BaseModel):
     attachments: list[str] = Field(default_factory=list, max_length=8)  # document ids
     model_id: str | None = None
     options: TaskOptions = Field(default_factory=TaskOptions)
+
+    @field_validator("prompt")
+    @classmethod
+    def prompt_must_contain_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("prompt must not be blank")
+        return value
 
 
 class TaskStep(BaseModel):
