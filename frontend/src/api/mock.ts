@@ -34,11 +34,13 @@ const TOKEN_DELAY_MS = 18;
 let state: MockState = createSeed();
 let counter = 0;
 const eventLog: Record<string, AgentEvent[]> = {};
+const eventSeq: Record<string, number> = {};
 const blobUrls = new Map<string, string>();
 
 export function resetMock(): void {
   state = createSeed();
   for (const key of Object.keys(eventLog)) delete eventLog[key];
+  for (const key of Object.keys(eventSeq)) delete eventSeq[key];
   for (const url of blobUrls.values()) {
     if (typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
   }
@@ -130,6 +132,7 @@ function createTask(body: unknown): Task {
   };
   state.tasks.unshift(task);
   eventLog[task.id] = [];
+  eventSeq[task.id] = 0;
   return task;
 }
 
@@ -321,9 +324,11 @@ async function chatStream(
   };
   state.tasks.unshift(task);
   eventLog[taskId] = [];
+  eventSeq[taskId] = 0;
 
   const emit = (type: AgentEventType, data: Record<string, unknown>): void => {
-    const event: AgentEvent = { type, task_id: taskId, at: now(), data };
+    eventSeq[taskId] = (eventSeq[taskId] ?? 0) + 1;
+    const event: AgentEvent = { id: eventSeq[taskId], type, task_id: taskId, at: now(), data };
     eventLog[taskId]?.push(event);
     onEvent(event);
   };
@@ -480,10 +485,13 @@ async function taskEventsStream(
   taskId: string,
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
+  after?: number,
 ): Promise<void> {
   const log = eventLog[taskId];
   if (!log) throw new ApiError(`Task ${taskId} not found`, 404);
+  const cursor = after !== undefined && after > 0 ? after : 0;
   for (const event of log) {
+    if (cursor > 0 && (event.id ?? 0) <= cursor) continue;
     await sleep(15, signal);
     onEvent(event);
   }

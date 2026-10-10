@@ -14,7 +14,15 @@ export function isAgentEventType(value: unknown): value is AgentEventType {
   );
 }
 
-export function parseEvent(data: string, eventName: string | undefined): AgentEvent | null {
+function envelopeId(record: Record<string, unknown>): number | undefined {
+  return typeof record.id === "number" && Number.isFinite(record.id) ? record.id : undefined;
+}
+
+export function parseEvent(
+  data: string,
+  eventName: string | undefined,
+  idLine?: number,
+): AgentEvent | null {
   try {
     const parsed: unknown = JSON.parse(data);
     if (typeof parsed !== "object" || parsed === null) return null;
@@ -30,7 +38,9 @@ export function parseEvent(data: string, eventName: string | undefined): AgentEv
       return null;
     }
     const eventData = record.data;
+    const id = envelopeId(record) ?? idLine;
     return {
+      ...(id === undefined ? {} : { id }),
       type,
       task_id: taskId,
       at: typeof record.at === "string" ? record.at : new Date().toISOString(),
@@ -42,6 +52,15 @@ export function parseEvent(data: string, eventName: string | undefined): AgentEv
   } catch {
     return null;
   }
+}
+
+function frameId(frame: string): number | undefined {
+  const line = frame
+    .split(/\r?\n/)
+    .find((candidate) => candidate.startsWith("id:"));
+  if (!line) return undefined;
+  const value = Number(line.slice(3).trim());
+  return Number.isFinite(value) ? value : undefined;
 }
 
 export function parseFrame(frame: string): AgentEvent | null {
@@ -56,7 +75,7 @@ export function parseFrame(frame: string): AgentEvent | null {
     .find((line) => line.startsWith("event:"))
     ?.slice(6)
     .trim();
-  return parseEvent(data, eventName);
+  return parseEvent(data, eventName, frameId(frame));
 }
 
 export async function readSseStream(

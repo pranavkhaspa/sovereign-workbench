@@ -99,6 +99,7 @@ export function streamTaskEvents(
   taskId: string,
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
+  after?: number,
 ): Promise<void> {
-  return transport.taskEventsStream(taskId, onEvent, signal);
+  return transport.taskEventsStream(taskId, onEvent, signal, after);
 }

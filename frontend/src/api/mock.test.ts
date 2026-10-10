@@ -135,6 +135,14 @@ describe("mock chat stream", () => {
     await mockTransport.taskEventsStream(taskId, (event) => replay.push(event));
     expect(replay).toHaveLength(events.length);
     expect(typesOf(replay)).toEqual(types);
+    expect(replay.every((event, index) => event.id === index + 1)).toBe(true);
+
+    const cursor = Math.floor(replay.length / 2);
+    const resumed: AgentEvent[] = [];
+    await mockTransport.taskEventsStream(taskId, (event) => resumed.push(event), undefined, cursor);
+    expect(resumed).toHaveLength(replay.length - cursor);
+    expect(resumed[0]?.id).toBe(cursor + 1);
+    expect(typesOf(resumed)).toEqual(types.slice(cursor));
   }, 20000);
 
   it("auto-selects the coder model for code tasks", async () => {

@@ -30,6 +30,7 @@ export interface Transport {
     taskId: string,
     onEvent: (event: AgentEvent) => void,
     signal?: AbortSignal,
+    after?: number,
   ): Promise<void>;
   upload(file: File): Promise<UploadResult>;
   downloadUrl(id: string): string;
@@ -116,9 +117,11 @@ async function taskEventsStream(
   taskId: string,
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
+  after?: number,
 ): Promise<void> {
+  const cursor = after !== undefined && after > 0 ? `?after=${encodeURIComponent(String(after))}` : "";
   const response = await openStream(
-    `/api/tasks/${encodeURIComponent(taskId)}/events`,
+    `/api/tasks/${encodeURIComponent(taskId)}/events${cursor}`,
     { method: "GET", headers: { Accept: "text/event-stream" } },
     signal,
     "Replay unavailable",

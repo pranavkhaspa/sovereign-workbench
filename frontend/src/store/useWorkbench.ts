@@ -39,6 +39,7 @@ interface WorkbenchState {
 
 let counter = 0;
 let activeController: AbortController | null = null;
+let lastEventId = 0;
 
 const nextId = () => `entry-${Date.now()}-${counter++}`;
 
@@ -144,10 +145,11 @@ function addEntry(event: AgentEvent): TimelineEntry {
         }
         return "Untitled step";
       });
+      const revised = data.replanned === true;
       return {
         id: nextId(),
         type: event.type,
-        label: `Plan ready · ${steps.length} ${steps.length === 1 ? "step" : "steps"}`,
+        label: `${revised ? "Plan revised" : "Plan ready"} · ${steps.length} ${steps.length === 1 ? "step" : "steps"}`,
         detail: titles.join("  →  "),
         data,
         at: event.at,
@@ -250,7 +252,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   citations: [],
   error: null,
 
-  reset: () =>
+  reset: () => {
+    lastEventId = 0;
     set({
       running: false,
       streamState: "idle",
@@ -259,7 +262,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       timeline: [],
       citations: [],
       error: null,
-    }),
+    });
+  },
 
   stop: () => {
     const taskId = get().taskId;
@@ -277,16 +281,21 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     activeController = controller;
     set({ running: true, streamState: "connecting", error: null });
 
-    // Replay the persisted event stream first: it carries the token text that
-    // task steps cannot reconstruct. Accumulate locally so a failed replay
-    // never wipes what is already on screen.
+    // Resume the persisted event stream from the cursor so replayed token text
+    // never duplicates what is already on screen. Without a cursor (fresh page)
+    // the whole history is rebuilt from a full replay.
+    const resume = lastEventId > 0;
     let terminal = false;
     let replayed = 0;
-    let timeline: TimelineEntry[] = [];
-    let answer = "";
+    let timeline: TimelineEntry[] = resume ? get().timeline : [];
+    let answer = resume ? get().answer : "";
+    if (!resume) set({ answer: "", timeline: [] });
     const handle = (event: AgentEvent): void => {
       if (activeController !== controller) return;
       replayed += 1;
+      if (typeof event.id === "number" && event.id > lastEventId) {
+        lastEventId = event.id;
+      }
       if (event.type === "task_created") {
         set({ taskId: asString(event.data.task_id, event.task_id), streamState: "streaming" });
       }
@@ -312,7 +321,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     };
 
     try {
-      await streamTaskEvents(taskId, handle, controller.signal);
+      await streamTaskEvents(taskId, handle, controller.signal, resume ? lastEventId : undefined);
     } catch {
       // Fall through to the step-polling fallback below.
     }
@@ -375,6 +384,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     activeController?.abort();
     const controller = new AbortController();
     activeController = controller;
+    lastEventId = 0;
     set({
       running: true,
       streamState: "connecting",
@@ -388,6 +398,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     let terminal = false;
     const handle = (event: AgentEvent) => {
       if (activeController !== controller) return;
+      if (typeof event.id === "number" && event.id > lastEventId) {
+        lastEventId = event.id;
+      }
       if (event.type === "task_created") {
         set({ taskId: asString(event.data.task_id, event.task_id), streamState: "streaming" });
       }

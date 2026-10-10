@@ -76,6 +76,23 @@ describe("parseFrame", () => {
     expect(typeof event?.at).toBe("string");
     expect(Number.isNaN(new Date(event?.at ?? "").getTime())).toBe(false);
   });
+
+  it("reads the id from the SSE id line", () => {
+    const event = parseFrame(`id: 7\n${frame({ type: "token", task_id: TASK_ID, data: { text: "ok" } })}`);
+    expect(event?.id).toBe(7);
+  });
+
+  it("prefers the envelope id over the id line", () => {
+    const event = parseFrame(
+      `id: 3\n${frame({ id: 9, type: "token", task_id: TASK_ID, data: { text: "ok" } })}`,
+    );
+    expect(event?.id).toBe(9);
+  });
+
+  it("omits the id when neither the line nor the envelope carries one", () => {
+    const event = parseFrame(frame({ type: "token", task_id: TASK_ID, data: { text: "ok" } }));
+    expect(event?.id).toBeUndefined();
+  });
 });
 
 describe("parseEvent", () => {

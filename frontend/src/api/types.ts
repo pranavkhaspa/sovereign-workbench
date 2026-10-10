@@ -131,6 +131,7 @@ export type AgentEventType =
   | "error";
 
 export interface AgentEvent {
+  id?: number;
   type: AgentEventType;
   task_id: string;
   at: string;
