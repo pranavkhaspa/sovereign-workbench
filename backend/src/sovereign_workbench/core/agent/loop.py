@@ -112,6 +112,7 @@ class AgentLoop:
                         "ok": result.ok,
                         "output": result.output[:4000],
                         "error": result.error,
+                        "citations": result.data.get("citations") or [],
                     },
                 )
                 memory.add_observation(f"[{step.title}] {result.output or result.error or ''}")
@@ -140,7 +141,14 @@ class AgentLoop:
 
         if _is_cancelled(ctx):
             raise AgentRunError("task cancelled by user", code="TASK_CANCELLED")
-        yield _event(task_id, "done", {"artifacts": [a.get("filename") for a in memory.artifacts]})
+        yield _event(
+            task_id,
+            "done",
+            {
+                "artifacts": [a.get("filename") for a in memory.artifacts],
+                "citations": list(memory.citations),
+            },
+        )
 
     async def _finalize(
         self,
