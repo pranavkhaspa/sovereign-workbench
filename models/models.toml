@@ -1,0 +1,160 @@
+# Sovereign Workbench — model registry
+# Add a model by adding a [[model]] block. The router selects by capability + tier.
+# Docs: docs/MODELS.md
+#
+# Fields:
+#   id           unique id used in configs and the audit log
+#   provider     ollama | llamacpp | openai | openrouter | anthropic | gemini
+#   remote       true => disabled automatically when AIRGAP=true
+#   tier         min | standard | large | remote
+#   capabilities subset of: plan, chat, code, vision, embed
+#   context      approximate context window (tokens)
+#   tags         freeform hints: "fast", "creative", "reasoning"
+#   notes        human note shown in the Models panel
+
+# ------------------------------- minimum tier (8 GB / 2 GB GPU) -------------
+[[model]]
+id = "planner-min"
+provider = "ollama"
+remote = false
+tier = "min"
+capabilities = ["plan", "chat"]
+model_name = "qwen2.5:3b-instruct-q4_K_M"
+context = 8192
+tags = ["reasoning"]
+notes = "Default planner/chat on the small machine."
+
+[[model]]
+id = "coder-min"
+provider = "ollama"
+remote = false
+tier = "min"
+capabilities = ["code", "chat"]
+model_name = "qwen2.5-coder:3b-instruct-q4_K_M"
+context = 8192
+tags = ["code"]
+notes = "Code generation and repair on the small machine."
+
+[[model]]
+id = "utility-min"
+provider = "ollama"
+remote = false
+tier = "min"
+capabilities = ["chat"]
+model_name = "qwen2.5:1.5b-instruct-q4_K_M"
+context = 8192
+tags = ["fast", "classification"]
+notes = "Fast utility model for classification and short answers."
+
+[[model]]
+id = "vision-min"
+provider = "ollama"
+remote = false
+tier = "min"
+capabilities = ["vision"]
+model_name = "moondream2"
+context = 2048
+tags = ["vision"]
+notes = "Reads scanned documents, drawings and photos on small GPUs."
+
+[[model]]
+id = "embed-min"
+provider = "local"          # sentence-transformers on CPU, no server needed
+remote = false
+tier = "min"
+capabilities = ["embed"]
+model_name = "BAAI/bge-small-en-v1.5"
+context = 512
+tags = ["embeddings"]
+notes = "CPU embedding model for the local knowledge base."
+
+# ------------------------------- standard tier (16 GB / 8 GB GPU) -----------
+[[model]]
+id = "planner-std"
+provider = "ollama"
+remote = false
+tier = "standard"
+capabilities = ["plan", "chat"]
+model_name = "qwen2.5:7b-instruct-q4_K_M"
+context = 32768
+tags = ["reasoning"]
+notes = "Stronger planner when more memory is available."
+
+[[model]]
+id = "coder-std"
+provider = "ollama"
+remote = false
+tier = "standard"
+capabilities = ["code", "chat"]
+model_name = "qwen2.5-coder:7b-instruct-q4_K_M"
+context = 32768
+tags = ["code"]
+notes = "Better code model for mid-range machines."
+
+# ------------------------------- large tier (GPU server) --------------------
+[[model]]
+id = "planner-large"
+provider = "ollama"
+remote = false
+tier = "large"
+capabilities = ["plan", "chat"]
+model_name = "qwen2.5:14b-instruct-q4_K_M"
+context = 32768
+tags = ["reasoning"]
+notes = "Best local planning on a GPU server."
+
+[[model]]
+id = "coder-large"
+provider = "ollama"
+remote = false
+tier = "large"
+capabilities = ["code", "chat"]
+model_name = "qwen2.5-coder:14b-instruct-q4_K_M"
+context = 32768
+tags = ["code"]
+notes = "Best local coding on a GPU server."
+
+[[model]]
+id = "vision-large"
+provider = "ollama"
+remote = false
+tier = "large"
+capabilities = ["vision"]
+model_name = "qwen2-vl:7b"
+context = 32768
+tags = ["vision"]
+notes = "High-quality vision for drawings and scans."
+
+[[model]]
+id = "embed-large"
+provider = "local"
+remote = false
+tier = "large"
+capabilities = ["embed"]
+model_name = "BAAI/bge-large-en-v1.5"
+context = 512
+tags = ["embeddings"]
+notes = "Higher-quality embeddings on a bigger machine."
+
+# ------------------------------- remote fallback (OFF in air-gap) -----------
+[[model]]
+id = "openai-gpt"
+provider = "openai"
+remote = true
+tier = "remote"
+capabilities = ["plan", "chat", "code", "vision"]
+model_name = "gpt-4o-mini"
+context = 128000
+tags = ["cloud"]
+notes = "Optional cloud fallback. Disabled while AIRGAP=true."
+
+[[model]]
+id = "openrouter-any"
+provider = "openrouter"
+remote = true
+tier = "remote"
+capabilities = ["plan", "chat", "code"]
+model_name = "qwen/qwen-2.5-72b-instruct"
+context = 32000
+tags = ["cloud"]
+notes = "Optional OpenRouter fallback. Disabled while AIRGAP=true."

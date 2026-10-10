@@ -1,0 +1,83 @@
+name: sovereign-workbench
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    networks:
+      workbench:
+        ipv4_address: 172.30.42.2
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.backend
+      args:
+        BACKEND_EXTRAS: ${BACKEND_EXTRAS:-ocr}
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      AIRGAP: ${AIRGAP:-true}
+      HARDWARE_TIER: ${HARDWARE_TIER:-min}
+      OLLAMA_BASE_URL: http://172.30.42.2:11434
+      MODEL_REGISTRY_PATH: /app/models/models.toml
+      DATA_DIR: /app/data
+      WORKSPACE_DIR: /app/data/workspace
+      ARTIFACTS_DIR: /app/data/artifacts
+      UPLOADS_DIR: /app/data/uploads
+      VECTOR_STORE_DIR: /app/data/vectorstore
+      DATABASE_URL: sqlite:////app/data/workbench.sqlite3
+    volumes:
+      - workbench-data:/app/data
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      workbench:
+        ipv4_address: 172.30.42.3
+    security_opt:
+      - no-new-privileges:true
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      workbench:
+        ipv4_address: 172.30.42.4
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  ollama-models:
+  workbench-data:
+
+networks:
+  workbench:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.42.0/24

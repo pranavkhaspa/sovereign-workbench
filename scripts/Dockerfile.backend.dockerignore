@@ -1,0 +1,9 @@
+*
+!backend/
+!backend/pyproject.toml
+!backend/src/
+!backend/src/**
+!models/
+!models/**
+!scripts/
+!scripts/Dockerfile.backend

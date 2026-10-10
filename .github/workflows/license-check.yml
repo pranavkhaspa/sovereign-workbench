@@ -1,0 +1,48 @@
+name: Licence checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend/pyproject.toml"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "scripts/bootstrap.sh"
+      - ".github/workflows/license-check.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/pyproject.toml"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "scripts/bootstrap.sh"
+      - ".github/workflows/license-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  licences:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies and licence scanner
+        run: |
+          ./scripts/bootstrap.sh --skip-frontend
+          .venv/bin/python -m pip install pip-licenses
+      - name: Check Python licences
+        run: >-
+          .venv/bin/pip-licenses
+          --allow-only="MIT;MIT License;MIT-CMU;Apache-2.0;Apache Software License;Apache Software License; MIT License;BSD License;BSD-2-Clause;BSD-3-Clause;Apache-2.0 OR BSD-2-Clause;ISC;PSF-2.0;0BSD;Unlicense"
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Check frontend licences
+        working-directory: frontend
+        run: npx --yes license-checker@25.0.1 --production --excludePrivatePackages --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;Unlicense;CC0-1.0;Zlib"

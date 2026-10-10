@@ -1,0 +1,43 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "models/**"
+      - "scripts/**"
+      - "Makefile"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "models/**"
+      - "scripts/**"
+      - "Makefile"
+      - ".github/workflows/backend-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AIRGAP: "true"
+      HARDWARE_TIER: min
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bootstrap backend dependencies
+        run: ./scripts/bootstrap.sh --skip-frontend
+      - name: Backend lint
+        run: make backend-lint
+      - name: Backend tests
+        run: make backend-test
